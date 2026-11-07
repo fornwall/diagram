@@ -1006,6 +1006,31 @@ suite("echartsChecks", function () {
     ]);
   });
 
+  test("leaves room for the labels at the ends of mark lines across and up the plot", () => {
+    const marked = (data: number[], marks: Option[], label?: Option) => ({
+      series: [{ type: "bar", data, markLine: { label, data: marks } }],
+    });
+    const options: Option[] = [
+      // As the guide suggests.
+      bars(marked([1, 2], [{ type: "average", name: "Average" }])),
+      bars(marked([1234567, -2], [{ type: "max" }, { yAxis: 600000.125 }])),
+      bars(marked([1, 2], [{ yAxis: 1.5, name: "Target" }], { formatter: "{b}: {c}" })),
+      // Horizontal bars, whose average is a line up the plot, labeled above it.
+      {
+        yAxis: { type: "category", data: ["A", "B"] },
+        xAxis: { type: "value" },
+        ...marked([1, 2], [{ type: "average" }]),
+      },
+    ];
+    for (const option of options) {
+      assert.deepStrictEqual(
+        warningsOf(option, { width: 400, height: 300 }),
+        [],
+        JSON.stringify(option),
+      );
+    }
+  });
+
   test("tells of the slices of a pie whose labels ECharts leaves out, which no legend names", () => {
     assert.deepStrictEqual(warningsOf({ series: [{ type: "pie", data: slices(60) }] }), [
       'series[0] labels only 31 of its 60 slices, leaving out the labels of the others, such as "Slice number 4", for lack of room: show fewer slices, as the largest and an "Other" that sums up the rest.',

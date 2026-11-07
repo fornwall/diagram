@@ -2,7 +2,7 @@
 // axes apart and readable: category labels turned, onto lines, told apart by what follows a start
 // they share, or cut short, and fewer value and time labels along a short or narrow axis.
 
-import { asArray } from "../protocol";
+import { asArray, isPlainObject } from "../protocol";
 import { facetPanels, layOutFacets } from "./echartsFacets";
 import {
   axisType,
@@ -20,7 +20,7 @@ import {
   styleOf,
   widestText,
 } from "./echartsMeasure";
-import type { JsonObject } from "./echartsOption";
+import { isCartesian, type JsonObject } from "./echartsOption";
 
 /**
  * Fits a single grid, or the panels of facets, into the space left, and keeps axis labels apart.
@@ -34,15 +34,18 @@ export function layOutGrid(base: JsonObject, reserved: Insets, size: Size): numb
   if (grids.length <= 1) {
     const grid = grids[0] ?? {};
     if (!has(grid, [...BOX_KEYS, "outerBounds", "outerBoundsMode"])) {
+      const marks = markLabelRoom(base, size);
+      const right = Math.max(20, marks.right);
+      const top = Math.max(14, marks.top);
       Object.assign(grid, {
         left: reserved.left + 8,
-        right: reserved.right + 20,
-        top: reserved.top + 14,
+        right: reserved.right + right,
+        top: reserved.top + top,
         bottom: reserved.bottom + 8,
       });
       panel = {
-        width: width - reserved.left - reserved.right - 28,
-        height: height - reserved.top - reserved.bottom - 22,
+        width: width - reserved.left - reserved.right - 8 - right,
+        height: height - reserved.top - reserved.bottom - top - 8,
       };
       // The ECharts 6 way to keep axis labels and names inside the grid rectangle.
       if (grid.containLabel === undefined) {
@@ -207,6 +210,88 @@ export function layOutGrid(base: JsonObject, reserved: Insets, size: Size): numb
     }
   }
   return Math.max(0, ...[...labelHeights.values()].map((height) => height - LABEL_HEIGHT));
+}
+
+/** The statistics of a series' data that a mark line can be drawn at. */
+const STATISTICS = new Set(["min", "max", "average", "median"]);
+
+/**
+ * The room that the labels at the ends of the mark lines of series on axes take beyond the plot:
+ * right of a line across it and above a line up it, at ECharts' distance of 5 pixels. ECharts
+ * labels a line by its value, rounded to the line's precision, and a line at a statistic of the
+ * series, such as its average, is labeled as wide as a value of the series can be.
+ */
+function markLabelRoom(base: JsonObject, size: Size): { right: number; top: number } {
+  const room = { right: 0, top: 0 };
+  const xAxes = asArray(base.xAxis);
+  const yAxes = asArray(base.yAxis);
+  for (const series of asArray(base.series)) {
+    const markLine = styleOf(series.markLine);
+    if (!isCartesian(series) || !Array.isArray(markLine.data)) continue;
+    // ECharts draws the lines at statistics up from the axis of categories, else of time, else x.
+    const x = axisType(xAxes[Number(series.xAxisIndex ?? 0)]);
+    const y = axisType(yAxes[Number(series.yAxisIndex ?? 0)]);
+    const upright = x !== "category" && (y === "category" || (y === "time" && x !== "time"));
+    const precision = typeof markLine.precision === "number" ? markLine.precision : 2;
+    const valueText = (value: unknown) =>
+      typeof value === "number" ? String(Number(value.toFixed(precision))) : String(value ?? "");
+    for (const item of markLine.data) {
+      if (!isPlainObject(item)) continue;
+      const label = { ...styleOf(markLine.label), ...styleOf(item.label) };
+      if (label.show === false || (label.position ?? "end") !== "end") continue;
+      let across: boolean;
+      let text: string;
+      if (STATISTICS.has(String(item.type))) {
+        const index = item.valueIndex ?? { x: 0, y: 1 }[String(item.valueDim)];
+        across = index === undefined ? !upright : index === 1;
+        text = statisticText(
+          series.data,
+          across ? 1 : 0,
+          item.type !== "min" && item.type !== "max",
+          precision,
+        );
+      } else if (item.yAxis !== undefined || item.xAxis !== undefined) {
+        across = item.yAxis !== undefined;
+        text = valueText(across ? item.yAxis : item.xAxis);
+      } else continue;
+      const font = size.font(label, size.themed);
+      const distance = typeof label.distance === "number" ? label.distance : 5;
+      if (!across) {
+        room.top = Math.max(room.top, font.size + distance + 4);
+        continue;
+      }
+      const shown =
+        typeof label.formatter === "string"
+          ? label.formatter.replace(/\{([abc])\}/g, (_, key: string) =>
+              key === "c" ? text : String((key === "b" ? item.name : series.name) ?? ""),
+            )
+          : text;
+      room.right = Math.max(room.right, Math.ceil(font.width(shown)) + distance + 4);
+    }
+  }
+  return room;
+}
+
+/**
+ * As wide a value as a statistic of a series' data can come to: as many digits as its largest
+ * value, with a sign if any is negative, and decimals if any has them, or if the statistic, as an
+ * average, can have them. Five digits for data of another form, such as of a dataset.
+ */
+function statisticText(data: unknown, index: number, fractional: boolean, precision: number) {
+  let digits = 0;
+  let negative = false;
+  let decimals = fractional;
+  for (const item of Array.isArray(data) ? data : []) {
+    const value: unknown = isPlainObject(item) ? item.value : item;
+    const part = Array.isArray(value) ? value[index] : value;
+    const number = typeof part === "string" && part.trim() ? Number(part) : part;
+    if (typeof number !== "number" || !Number.isFinite(number)) continue;
+    digits = Math.max(digits, String(Math.trunc(Math.abs(number))).length);
+    negative ||= number < 0;
+    decimals ||= !Number.isInteger(number);
+  }
+  const fraction = decimals && precision > 0 ? `.${"0".repeat(precision)}` : "";
+  return `${negative ? "-" : ""}${"0".repeat(digits || 5)}${fraction}`;
 }
 
 /**
