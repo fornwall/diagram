@@ -355,6 +355,21 @@ suite("evidence", () => {
     assert.strictEqual(panel.current?.evidence?.[0]?.id, "N1");
     await invokeTool(tool, { action: "clear", revision: panel.revision });
     assert.strictEqual(panel.current?.evidence, undefined);
+    // Clearing what is not there changes nothing, and keeps the revision.
+    const revision = panel.revision;
+    for (const ids of [undefined, ["N1"]]) {
+      assert.deepStrictEqual(
+        JSON.parse(await invokeTool(tool, { action: "clear", ids, revision })),
+        { revision, action: "clear", items: 0 },
+      );
+    }
+    await attach();
+    const attached = panel.revision;
+    assert.deepStrictEqual(
+      JSON.parse(await invokeTool(tool, { action: "clear", ids: ["N1"], revision: attached })),
+      { revision: attached, action: "clear", items: 1 },
+    );
+    assert.strictEqual(panel.revision, attached);
     assert.strictEqual(
       await invokeTool(tool, {}, undefined, {
         tokenBudget: 1,

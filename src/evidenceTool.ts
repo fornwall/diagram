@@ -121,10 +121,11 @@ export class EvidenceTool implements vscode.LanguageModelTool<unknown> {
         const kept = input.ids
           ? state.evidence?.filter(({ id }) => !input.ids?.includes(id))
           : undefined;
-        const appliedRevision = await this.panel.setEvidence(
-          kept?.length ? kept : undefined,
-          revision,
-        );
+        // Clearing what is not there keeps the revision.
+        const appliedRevision =
+          (kept?.length ?? 0) === (state.evidence?.length ?? 0)
+            ? revision
+            : await this.panel.setEvidence(kept?.length ? kept : undefined, revision);
         return textResult(
           JSON.stringify({
             revision: appliedRevision,
