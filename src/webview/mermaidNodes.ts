@@ -178,13 +178,20 @@ export const NOTHING_DRAWN: DrawnNodes = {
   links: new Map(),
 };
 
-/** The text of an element, with its lines (separate text nodes) separated by spaces. */
+/**
+ * The text of an element, with its lines (separate text nodes) separated by spaces, and its
+ * formulas as the source writes them, as "$$x^2$$", where the drawing has their TeX.
+ */
 function textOf(element: Element): string {
   const parts: string[] = [];
-  const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
-  while (walker.nextNode()) {
-    parts.push(walker.currentNode.nodeValue ?? "");
-  }
+  const visit = (node: Node) => {
+    const tex =
+      node instanceof Element && node.localName === "math" && node.getAttribute("data-tex");
+    if (typeof tex === "string") parts.push(`$$${tex}$$`);
+    else if (node.nodeType === Node.TEXT_NODE) parts.push(node.nodeValue ?? "");
+    else for (const child of node.childNodes) visit(child);
+  };
+  visit(element);
   return parts.join(" ").replace(/\s+/g, " ").trim();
 }
 

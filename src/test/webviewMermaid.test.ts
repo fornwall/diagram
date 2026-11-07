@@ -1693,6 +1693,29 @@ suite("Mermaid in the webview", function () {
     );
   });
 
+  test("names items by their formulas as the source writes them, rather than by their MathML", async () => {
+    const labels = async (source: string) => {
+      await draw({ source });
+      return evaluate(`[...document.querySelectorAll("#diagram [role=button]")]
+        .map((node) => node.getAttribute("aria-label")).sort()`);
+    };
+    assert.deepStrictEqual(
+      await labels('flowchart LR\n  A["Area: $$x^2 + \\frac{1}{2}$$ m"] -->|"$$x_2$$"| B[Plain]'),
+      [
+        "Area: $$x^2 + \\frac{1}{2}$$ m",
+        "Area: $$x^2 + \\frac{1}{2}$$ m → Plain: $$x_2$$",
+        "Plain",
+      ],
+    );
+    // Participants as their messages.
+    assert.deepStrictEqual(
+      await labels(
+        "sequenceDiagram\n  participant A as $$\\alpha$$\n  A->>B: $$\\beta^2$$ and text",
+      ),
+      ["$$\\alpha$$", "$$\\alpha$$ → B: $$\\beta^2$$ and text", "B"],
+    );
+  });
+
   test("reports the node ids it drew, and marks them on the diagram it already shows", async () => {
     await draw({ source: MERMAID["flowchart-v2"] });
     assert.deepStrictEqual([...(page.panel.drawnIds ?? [])].sort(), ["A", "B"]);

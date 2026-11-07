@@ -419,6 +419,34 @@ async function drawParticipantFormulas(svg: SVGSVGElement, db: DiagramDb | undef
   }
 }
 
+/** The elements and text of MathML, without the annotations that drawings leave out. */
+function mathKey(element: Element): string {
+  if (element.localName.startsWith("annotation")) return "";
+  const inside = Array.from(element.childNodes, (child) =>
+    child instanceof Element ? mathKey(child) : (child.nodeValue ?? "").trim(),
+  ).join("");
+  return element.localName === "semantics" ? inside : `<${element.localName}>${inside}</>`;
+}
+
+/**
+ * Gives each formula drawn the TeX that the source writes it in, which the drawing leaves out, for
+ * its items to go by: the text of the MathML of x^2 is "x 2".
+ */
+async function markFormulas(svg: SVGSVGElement, text: string): Promise<void> {
+  const { default: katex } = await import("katex");
+  const drawn = document.createElement("template");
+  const sources = new Map<string, string>();
+  for (const [, formula = ""] of text.matchAll(new RegExp(FORMULA, "g"))) {
+    drawn.innerHTML = katex.renderToString(formula, MATHML);
+    const math = drawn.content.querySelector("math");
+    if (math && !sources.has(mathKey(math))) sources.set(mathKey(math), formula);
+  }
+  for (const math of svg.querySelectorAll("math")) {
+    const formula = sources.get(mathKey(math));
+    if (formula !== undefined) math.setAttribute("data-tex", formula);
+  }
+}
+
 /**
  * Places a drawing that Mermaid made in the layout container, where it can be measured while the
  * canvas is hidden, and completes it there, in the theme's colors. The caller takes it out of the
@@ -448,6 +476,7 @@ async function layOut(
     if (diagramType === "sequence" && FORMULA.test(text)) {
       await drawParticipantFormulas(svg, await db());
     }
+    if (FORMULA.test(text)) await markFormulas(svg, text);
     if (diagramType === "gantt") thinAxisLabels(svg);
     // Mermaid multiplies the flows of a sankey diagram into the background, which turns them
     // black on a dark one: screen them onto it instead, which shows them as multiplying does
