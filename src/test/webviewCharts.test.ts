@@ -132,6 +132,40 @@ suite("ECharts in the webview", function () {
     }
   });
 
+  test("keeps the marks of an undimmed chart highlighted once the axis pointer leaves them", async () => {
+    await renderChart({
+      xAxis: { type: "category", data: ["A", "B"] },
+      yAxis: {},
+      series: [
+        {
+          type: "bar",
+          data: [1, 1],
+          itemStyle: { color: "#0000ff" },
+          emphasis: { itemStyle: { color: "#ff0000" } },
+        },
+      ],
+    });
+    page.panel.annotate({ marks: [{ id: "A", kind: "info" }], dim: false });
+    const marked = await evaluate(`(async () => {
+      ${UNTIL}
+      const red = () => document.querySelectorAll('#chart svg path[fill="#ff0000"]').length;
+      await until(() => red() === 1, "the mark highlighted");
+      const move = (element, x, y) => element.dispatchEvent(new MouseEvent("mousemove",
+        {bubbles: true, clientX: x, clientY: y}));
+      // Over the marked item, which the axis pointer highlights and downplays, then off it.
+      const bar = document.querySelector('#chart svg path[fill="#ff0000"]');
+      const box = bar.getBoundingClientRect();
+      move(bar, box.x + box.width / 2, box.y + box.height / 2);
+      await nextFrame(2);
+      const svg = document.querySelector("#chart svg");
+      const corner = svg.getBoundingClientRect();
+      move(svg, corner.x + 2, corner.y + 2);
+      await nextFrame(2);
+      return red();
+    })()`);
+    assert.strictEqual(marked, 1);
+  });
+
   test("dims the chart around marks in several series, not around the last series' alone", async () => {
     const colors = ["#0000ff", "#00ff00", "#ff0000"];
     await renderChart({

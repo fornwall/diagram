@@ -523,11 +523,11 @@ export class EChartsRenderer implements Renderer {
     });
     // ECharts takes the blur off the whole chart for any other highlight or downplay, such as the
     // axis pointer's, and when the pointer leaves an item it emphasized, which would end the
-    // dimming around the marks until they change: blur the rest again. The marks' own actions are
-    // silent, and ECharts handles the pointer leaving first, as it listened first.
-    const restoreMarks = () => {
-      if (this.blurring()) this.highlightMarked();
-    };
+    // dimming around the marks until they change: blur the rest again. A downplay, as of the axis
+    // pointer leaving a category or the pointer a legend entry, takes the highlight off the marks
+    // in it too. The marks' own actions are silent, and ECharts handles the pointer leaving first,
+    // as it listened first.
+    const restoreMarks = () => this.highlightMarked();
     chart.on("highlight", restoreMarks);
     chart.on("downplay", restoreMarks);
     chart.getZr().on("mouseout", restoreMarks);
