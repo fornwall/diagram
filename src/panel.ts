@@ -886,7 +886,9 @@ export class DiagramPanel implements vscode.Disposable {
         ok: false,
         reason:
           this.unavailable ??
-          `The panel is still drawing the ${diagramNoun(this.state?.language ?? "mermaid")}. Wait for the current render and retry.`,
+          (this.webview.tab
+            ? `The panel is still drawing the ${diagramNoun(this.state?.language ?? "mermaid")}. Wait for the current render and retry.`
+            : "The diagram panel closed before the marks were shown. Retry to reopen it."),
       };
     }
     // The tool reopens the panel before marking, so relationship aliases and repeated chart

@@ -359,6 +359,26 @@ suite("graph agent tools", () => {
     assert.strictEqual(annotation.dim, true);
   });
 
+  test("says that the panel closed before the results could be focused", async () => {
+    const { panel, webview } = await fakeGraph([node("A"), node("B"), edge("ab", "A", "B")]);
+    const report = await invokeTool(
+      new GraphDiagramTool(panel),
+      { operation: "components", focus: true },
+      undefined,
+      {
+        tokenBudget: 100_000,
+        countTokens: async (text) => {
+          webview.panel.dispose();
+          return text.length;
+        },
+      },
+    );
+    assert.match(
+      report,
+      /^Graph query failed: The diagram panel closed before the marks were shown\./,
+    );
+  });
+
   test("rejects stale reads, invalid inputs and cancelled calls without focusing", async () => {
     const { panel, webview } = await fakeGraph([node("A")]);
     const tool = new GraphDiagramTool(panel);
