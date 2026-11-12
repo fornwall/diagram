@@ -1,47 +1,30 @@
-// The names that the tools taking item ids take for the items of a Mermaid drawing: their ids, and
-// for an edge or sequence message also its ends' node ids with an arrow between, as in "A --> B",
-// and its label to tell it from others between them, as in "A --> B: Yes", which a model knows from
-// the source, unlike ids such as "edge:L_A_B_0" and "message:i3".
+// Item names for tools: ids, or for edges and messages "A --> B" or "A --> B: Yes", which a model
+// knows from the source, unlike ids such as "edge:L_A_B_0".
 
 import type { DiagramNode } from "./protocol";
 import { quoteAll } from "./text";
 
-/**
- * The arrows between the ends of a relationship, at a place in a name: "-->", "->" or "→" as
- * documented, those of relationship labels, such as "↔", of ER diagrams, such as "||--o{", and the
- * others of Mermaid sources, such as "->>", "-)", "--x", "o--o", "<-->", "==>", "-.->", "<|--" and
- * "..>". A mark that starts one, as the "o" of "o--o", follows a space.
- */
+// Documented arrows, those of labels and ER diagrams, and Mermaid's others. A leading mark, as the
+// "o" of "o--o", follows a space.
 const ARROWS = [
   /[→↔—]/y,
   /[|}][o|](?:--|\.\.)[o|][|{]/y,
   /(?:<<|<\|?|(?<=^|\s)[ox*])?(?:[-=.]+(?:>>|\|>|>|[xo)*])|[-=.]{2,})/y,
 ];
-/** An arrow with a head at its start alone, as "<|--", which points from the second end. */
+// Points from the second end, as "<|--".
 const BACKWARD = /^<(?!.*(?:>|[)xo*])$)/;
-/**
- * A flowchart link with its label on it, as in "A -- Yes --> B", "A -. Yes .-> B" or
- * "A == Yes ==> B", or a requirement diagram's relationship, as in "sim - satisfies -> req": its
- * ends and label.
- */
+// As in "A -- Yes --> B", "A -. Yes .-> B", "A == Yes ==> B" or "sim - satisfies -> req".
 const LABELED_LINK =
   /^(.+?)\s*(?:--|==|-\.|-)\s+(.+?)\s+(?:[-=.]*[-=.](?:>|[xo])|[-=.]{2,})\s*(.+)$/s;
-/** A label of a stereotype alone, as a requirement diagram's "<<satisfies>>": its name. */
 const STEREOTYPE = /^<<(.*)>>$/s;
-/** A letter, digit or underscore, which an id goes on with. */
 const WORD = /[\p{L}\p{N}_]/u;
-/** A relationship id's prefix, which a model may also put before ends. */
+// A model may also put it before ends.
 const KIND = /^(?:edge|message):/;
-/** A flowchart edge's label after its arrow, as in "A -->|Yes| B". */
+// As in "A -->|Yes| B".
 const PIPED = /^\|([^|]*)\|(.*)$/s;
 
-/** A key for the relationships from the source to the target. */
 const pair = (source: string, target: string) => JSON.stringify([source, target]);
 
-/**
- * Label text as compared: without quotes, the angle brackets of a stereotype, line breaks and runs
- * of spaces, in lowercase.
- */
 const comparable = (text: string) =>
   text
     .replace(/<br\s*\/?>/gi, " ")
@@ -51,22 +34,18 @@ const comparable = (text: string) =>
     .replace(STEREOTYPE, "$1")
     .toLowerCase();
 
-/** The items of a drawing: its nodes, and its edges or sequence messages between them. */
 interface DrawnItems {
   nodeIds: readonly string[];
   relationships: readonly DiagramNode[];
 }
 
-/** What a name names: the ids of the items, and why it names none, if it names ends. */
 export interface Named {
   ids: string[];
   why?: string;
 }
 
-/** A name that a model gave, and what it names. */
 export type Resolved = Named & { name: string };
 
-/** The ends that a name gives, and the label, if it gives one. */
 interface Ends {
   source: string;
   target: string;
@@ -77,14 +56,9 @@ export class ItemNames {
   private readonly nodes: ReadonlySet<string>;
   private readonly ids: ReadonlySet<string>;
   private readonly relationships = new Map<string, DiagramNode>();
-  /** The relationships from one node to another, by both, as keyed by {@link pair}. */
   private readonly pairs = new Map<string, DiagramNode[]>();
-  /** The label of each relationship, as compared. */
   private readonly texts = new Map<string, string>();
-  /**
-   * What the names that {@link named} tries name: those of many relationships between the same
-   * nodes, with the same label, are the same.
-   */
+  // Cached, as relationships between the same nodes try the same names.
   private readonly tried = new Map<string, Named>();
 
   constructor(readonly drawn: DrawnItems) {
@@ -103,24 +77,19 @@ export class ItemNames {
       this.texts.set(node.id, comparable(labelText(node)));
       const { source, target, direction } = relation;
       add(source, target, node);
-      // One both or no way goes between its ends either way.
+      // Bidirectional or undirected.
       if (direction !== "forward" && source !== target) add(target, source, node);
     }
   }
 
-  /** Whether an item has the id. */
   has(id: string): boolean {
     return this.ids.has(id);
   }
 
-  /**
-   * The item of the id, or else the edges or messages between the ends named, as in "A --> B":
-   * those from A to B, and those without a single direction between A and B either way, and of
-   * these those with the label, if named, as in "A --> B: Yes" or "A -->|Yes| B".
-   */
+  // The item of the id, or else the relationships between the ends named, with the label if any.
   resolve(name: string): Named {
     if (this.ids.has(name)) return { ids: [name] };
-    // As an id may hold a dash or a colon, the first reading of ends and label that names any.
+    // An id may hold a dash or a colon: take the first reading that names any.
     const { readings, fallback } = this.readings(name.replace(KIND, ""));
     const between = readings.filter(
       ({ source, target }) => this.nodes.has(source) && this.nodes.has(target),
@@ -134,7 +103,6 @@ export class ItemNames {
     }
     const odd = between.length === 0 ? this.withoutArrow(name.replace(KIND, "")) : undefined;
     if (odd) {
-      // What points back, as "<-" or "←", goes from the second end to the first.
       const back = /^[<←⇐⟵]/.test(odd.between) && !/[>→⇒⟶]$/.test(odd.between);
       const [from, to] = back ? [odd.target, odd.source] : [odd.source, odd.target];
       const fixed = JSON.stringify(`${from} --> ${to}`);
@@ -166,33 +134,24 @@ export class ItemNames {
     };
   }
 
-  /** What each of the names names. */
   resolveAll(names: readonly string[]): Resolved[] {
     return names.map((name) => ({ name, ...this.resolve(name) }));
   }
 
-  /** The relationship of the id, if it is one. */
   relationship(id: string): DiagramNode | undefined {
     return this.relationships.get(id);
   }
 
-  /**
-   * The shortest name of each item, for a model to use: node ids, and relationships by their ends,
-   * and label if others go between them too, unless that names others too.
-   */
+  // The shortest name of each item.
   names(): string[] {
     return [...this.drawn.nodeIds, ...this.drawn.relationships.map(({ id }) => this.name(id))];
   }
 
-  /** The shortest name of the item of the id, as {@link names} gives it. */
   name(id: string): string {
     return this.named(id)?.name ?? id;
   }
 
-  /**
-   * A relationship's name by its ends, as in "A --> B", or by its ends and label, as in
-   * "A --> B: Yes", if that alone names it; else undefined.
-   */
+  // "A --> B" or "A --> B: Yes", if that names it alone.
   named(id: string): { name: string; labeled: boolean } | undefined {
     const node = this.relationships.get(id);
     const relation = node?.relationship;
@@ -212,17 +171,12 @@ export class ItemNames {
     return label && only(labeled) ? { name: labeled, labeled: true } : undefined;
   }
 
-  /** The relationships from the source to the target, also those that go both or no way. */
   private between(source: string, target: string): readonly DiagramNode[] {
     return this.pairs.get(pair(source, target)) ?? [];
   }
 
-  /**
-   * The ends that the name may give on either side of an arrow, and the label after the second end
-   * or the arrow, in order; and the reading to tell a model why it names nothing, if none does: of
-   * the first arrow after a node id, or else set apart by spaces, or else the first, with the label
-   * after the first colon rather than an end that holds it.
-   */
+  // Possible ends and labels, in order, and a fallback reading to explain a name that names
+  // nothing.
   private readings(name: string): { readings: Ends[]; fallback: Ends | undefined } {
     const readings: Ends[] = [];
     const fallbacks: { ends: Ends; spaced: boolean }[] = [];
@@ -231,7 +185,6 @@ export class ItemNames {
       const [, source = "", label = "", target = ""] = link;
       readings.push({ source: source.trim(), target: target.trim(), label: label.trim() });
     }
-    /** The ends on either side of the arrow at the index, of the length. */
     const around = (index: number, length: number): Ends[] => {
       const source = name.slice(0, index).trim();
       const after = name.slice(index + length).trim();
@@ -259,11 +212,9 @@ export class ItemNames {
         index++;
         continue;
       }
-      // A circle or cross at its start ends the first end's id instead where nothing is before
-      // it, as the id "o" of "o-->x".
+      // A leading circle or cross is an id where nothing is before it, as "o" of "o-->x".
       const marked = /^[ox*]/.test(arrow) && name.slice(0, index).trim() === "";
       const given = marked ? around(index + 1, arrow.length - 1) : around(index, arrow.length);
-      // An arrow with a head at its start alone goes from the second end to the first.
       const read = BACKWARD.test(arrow)
         ? given.map(({ source, target, label }) => ({ source: target, target: source, label }))
         : given;
@@ -272,7 +223,7 @@ export class ItemNames {
       const spaced =
         /\s/.test(name.charAt(index - 1)) && /\s/.test(name.charAt(index + arrow.length));
       if (ends) fallbacks.push({ ends, spaced });
-      // A circle or cross at its end may start the second end's id instead, as in "A --xray".
+      // A trailing circle or cross may start an id, as in "A --xray".
       if (/[xo]$/.test(arrow)) readings.push(...around(index, arrow.length - 1));
       index += arrow.length;
     }
@@ -283,10 +234,7 @@ export class ItemNames {
     return { readings, fallback: fallback?.ends };
   }
 
-  /**
-   * The node ids that the name starts and ends with, before any label, if no arrow that the tools
-   * read goes between them, and what does.
-   */
+  // Ends with an arrow the tools do not read between them.
   private withoutArrow(
     name: string,
   ): { source: string; target: string; between: string } | undefined {
@@ -317,7 +265,7 @@ export class ItemNames {
   }
 }
 
-/** The arrow at the index of the name, if one starts there: the longest. */
+// The longest.
 function arrowAt(name: string, index: number): string | undefined {
   for (const arrow of ARROWS) {
     arrow.lastIndex = index;
@@ -327,26 +275,19 @@ function arrowAt(name: string, index: number): string | undefined {
   return undefined;
 }
 
-/**
- * The relationship's own label, as "Yes" of "Start → Check: Yes", which the page gives apart from
- * the labels of its ends, as those may hold colons too, as in "Step 1: Parse"; of a stereotype, as
- * a requirement diagram's "<<satisfies>>", its name, as the source writes it.
- */
+// Given apart from its ends' labels, which may hold colons. A stereotype's is its name.
 function labelText({ relationship }: DiagramNode): string {
   return (relationship?.text ?? "").replace(STEREOTYPE, "$1");
 }
 
-/** E.g. `"X", "A --> C" (nothing goes from "A" to "C")`. */
+// As `"X", "A --> C" (nothing goes from "A" to "C")`.
 export function resolvedList(resolved: readonly Resolved[]): string {
   return resolved
     .map(({ name, why }) => (why ? `${JSON.stringify(name)} (${why})` : JSON.stringify(name)))
     .join(", ");
 }
 
-/**
- * Names of ends with the relationships between them, by id and label, e.g.
- * `"A --> B" (ids: "edge:L_A_B_0" for "Parser → Checker: Yes", "edge:L_A_B_1" for …)`.
- */
+// As `"A --> B" (ids: "edge:L_A_B_0" for "Parser → Checker: Yes", …)`.
 export function severalList(several: readonly Resolved[], names: ItemNames): string {
   return several
     .map(({ name, ids }) => {
@@ -361,7 +302,7 @@ export function severalList(several: readonly Resolved[], names: ItemNames): str
     .join(", ");
 }
 
-/** E.g. `"Parser → Checker: validates" (id: "edge:L_A_B_0")`. */
+// As `"Parser → Checker: validates" (id: "edge:L_A_B_0")`.
 export function relationshipList(relationships: readonly DiagramNode[]): string {
   return relationships
     .map(({ label, id }) => `${JSON.stringify(label)} (id: ${JSON.stringify(id)})`)

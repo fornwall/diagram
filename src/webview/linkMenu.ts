@@ -1,26 +1,14 @@
-// A menu of the links that the source gives a node, such as a sequence diagram actor's.
-
 import type { WebLink } from "./renderer";
 
-/** Closes the menu shown, if any, moving the focus back to where it was if asked to. */
 let closeShown: ((refocus: boolean) => void) | undefined;
-/** The container of the menu shown. */
 let shownIn: HTMLElement | undefined;
 
-/**
- * Closes the menu shown, if any, or only one in the container, as the diagram is about to be drawn
- * again: the focus goes back to the node, which the drawing keeps it on.
- */
+// Before drawing again, which keeps the focus on the node.
 export function closeLinkMenu(container?: HTMLElement): void {
   if (container === undefined || container === shownIn) closeShown?.(true);
 }
 
-/**
- * Shows a menu of the links by the anchor, in the scrolling container so that it scrolls along,
- * and focuses its first entry. Choosing one calls open. Arrow keys, Home and End move between the
- * entries; Escape closes the menu, as does moving the focus out of it, by a click elsewhere or Tab,
- * and resizing the container.
- */
+// In the scrolling container, so that it scrolls along.
 export function showLinkMenu(
   container: HTMLElement,
   anchor: Element,
@@ -34,8 +22,7 @@ export function showLinkMenu(
   menu.className = "link-menu";
   menu.setAttribute("role", "menu");
   menu.setAttribute("aria-label", label);
-  // A resize of the container moves the anchor, as the drawing is centered in it, and would leave
-  // the menu behind. Not scrollbars coming or going, which leave its border box as it is.
+  // Resizing moves the centered anchor away; scrollbars leave the border box as it is.
   const { offsetWidth, offsetHeight } = container;
   const resized = new ResizeObserver(() => {
     if (container.offsetWidth !== offsetWidth || container.offsetHeight !== offsetHeight) {
@@ -46,7 +33,7 @@ export function showLinkMenu(
     if (closeShown !== close) return;
     closeShown = undefined;
     resized.disconnect();
-    // Before removing the menu: removing its focused entry first leaves the focus on the body.
+    // First: removing the focused entry leaves the focus on the body.
     if (refocus && (returnFocus instanceof HTMLElement || returnFocus instanceof SVGElement)) {
       returnFocus.focus({ preventScroll: true });
     }
@@ -95,18 +82,14 @@ export function showLinkMenu(
   (menu.firstElementChild as HTMLElement | null)?.focus({ preventScroll: true });
 }
 
-/** The room the menu keeps from the edges of the container, and from the anchor. */
 const MARGIN = 2;
 
-/**
- * Places the menu below the anchor, or above it where there is no room below, and as far left as
- * fits in the visible part of the container. A menu past its edges would widen what the container
- * scrolls, scrolling the drawing away from under the pointer until it closes again.
- */
+// Within the visible container: a menu past its edges would scroll the drawing from under the
+// pointer.
 function placeMenu(menu: HTMLElement, container: HTMLElement, anchor: Element): void {
   const box = anchor.getBoundingClientRect();
   const outer = container.getBoundingClientRect();
-  // In the coordinates the menu is placed in: of the container's content, scrolled along.
+  // In the container's scrolled content.
   const x = (clientX: number) => clientX - outer.left - container.clientLeft + container.scrollLeft;
   const y = (clientY: number) => clientY - outer.top - container.clientTop + container.scrollTop;
   // Measured at the start of the container, where nothing narrows the menu.

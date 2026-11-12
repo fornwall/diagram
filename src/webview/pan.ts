@@ -1,42 +1,27 @@
-// Drag-to-pan for the scrolling canvas: a rendering larger than the panel follows the pointer.
-
-/** How far the pointer moves before a drag pans instead of clicking a node. */
 const PAN_THRESHOLD = 3;
-/**
- * How far the pointer can move between pressing and releasing for a click that the hand shook to
- * still be a click, unless it selected text: as far as ECharts lets it move on a chart.
- */
+// As far as ECharts lets a click move on a chart.
 const CLICK_TOLERANCE = 4;
 
-/** The drag in progress, from the pointer that went down on a canvas that can be panned. */
 interface Drag {
   pointerId: number;
-  /** Where the pointer was when it last panned, in client coordinates. */
+  // Where it last panned.
   x: number;
   y: number;
-  /** Whether it moved far enough to pan, rather than being a click that has not ended yet. */
   panning: boolean;
 }
 
-/**
- * Lets the user drag the canvas to scroll what does not fit in the panel, and shows a grab cursor
- * while there is something to pan to. Text stays selectable while the whole rendering fits.
- */
+// Text stays selectable while the whole rendering fits.
 export function enablePanning(canvas: HTMLElement): void {
   let drag: Drag | undefined;
-  /** Whether the drag panned, in which case the click that ends it must not change the selection. */
+  // The click that ends a pan must not change the selection.
   let panned = false;
-  /**
-   * Where the mouse button went down. A drag from there that selects text rather than pans, while
-   * the rendering fits, ends in a click too, on what the text it passed over has in common.
-   */
+  // A drag that selects text also ends in a click.
   let pressed: { x: number; y: number } | undefined;
   let cursorFrame = 0;
 
   const canPan = () =>
     canvas.scrollWidth > canvas.clientWidth || canvas.scrollHeight > canvas.clientHeight;
 
-  /** Whether the point is on one of the canvas's scrollbars, which drag the other way. */
   const onScrollbar = (x: number, y: number) => {
     const box = canvas.getBoundingClientRect();
     return (
@@ -45,7 +30,7 @@ export function enablePanning(canvas: HTMLElement): void {
     );
   };
 
-  /** Shows whether dragging would pan, measuring the canvas at most once per frame. */
+  // Measures at most once per frame.
   const showCursor = () => {
     if (cursorFrame) {
       return;
@@ -88,7 +73,7 @@ export function enablePanning(canvas: HTMLElement): void {
           ? { x: event.clientX, y: event.clientY }
           : undefined;
     }
-    // Touch and pen contacts scroll the canvas by themselves, and only a primary button drags.
+    // Touch and pen scroll natively.
     if (
       drag ||
       event.pointerType === "touch" ||
@@ -101,8 +86,7 @@ export function enablePanning(canvas: HTMLElement): void {
       return;
     }
     drag = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, panning: false };
-    // A drag pans the rendering, so it must not select the text it passes over. That also leaves
-    // the focus where it was, so move it to the node under the pointer as a click would.
+    // Prevents text selection, and with it focusing, so focus as a click would.
     event.preventDefault();
     const target = event.target instanceof Element ? event.target.closest("[tabindex]") : null;
     if (target instanceof HTMLElement || target instanceof SVGElement) {
@@ -126,11 +110,10 @@ export function enablePanning(canvas: HTMLElement): void {
       }
       drag.panning = true;
       panned = true;
-      // Keep following the pointer when it leaves the canvas, e.g. over the panel's footer.
       canvas.setPointerCapture(drag.pointerId);
       canvas.classList.add("panning");
     }
-    // Scrolling is clamped at the edges, so track the pointer from where it last panned.
+    // Clamped at the edges, so track the pointer rather than the scroll position.
     canvas.scrollLeft -= dx;
     canvas.scrollTop -= dy;
     drag.x = event.clientX;
@@ -143,10 +126,8 @@ export function enablePanning(canvas: HTMLElement): void {
   canvas.addEventListener("lostpointercapture", stopDrag);
   window.addEventListener("blur", () => stopDrag());
 
-  // The click that ends a pan or a drag reaches the canvas and its nodes: swallow it before they
-  // see it. Not one that the hand only shook a little and that selected no text, as on a chart,
-  // whose text cannot be selected, or on a button. Listeners on the canvas itself only lose it to
-  // this one if they are added later, hence enablePanning before them.
+  // Swallow the click that ends a pan or drag, unless it barely moved and selected nothing.
+  // Canvas listeners added later lose it to this one, hence enablePanning before them.
   canvas.addEventListener(
     "click",
     (event) => {

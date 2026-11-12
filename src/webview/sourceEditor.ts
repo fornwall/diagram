@@ -1,18 +1,14 @@
-// Source editing with drafts preserved across view changes, incoming diagrams and reloads.
-
 import { isPlainObject } from "../protocol";
 import type { Renderer } from "./renderer";
 
 const VIEW_MODES = ["visual", "split", "source"] as const;
-/** Textareas expose every line ending as LF, including source read from Windows files. */
+// Textareas turn every line ending into LF.
 const editorText = (source: string) => source.replace(/\r\n?/g, "\n");
 
 export type ViewMode = (typeof VIEW_MODES)[number];
 
-/** Source editor state saved across webview reloads. */
 export interface EditorState {
   view?: ViewMode;
-  /** Unapplied edits, and the source they started from. */
   editor?: { source: string; base: string } | undefined;
 }
 
@@ -29,28 +25,23 @@ interface Diagram {
   renderer: Renderer;
   source: string;
   requestId: number;
-  /** Cached lazily, since a chart's JSON can be large. */
+  // Lazily, as a chart's JSON can be large.
   formatted?: string;
 }
 
 export class SourceEditor {
-  /** Restored when a diagram becomes available. */
   view: ViewMode = "visual";
   private diagram: Diagram | undefined;
   private sourceShown = false;
-  /** Source before the current edits. */
   private editedFrom = "";
-  /** Recognizes the host's response to Apply. */
   private appliedSource: string | undefined;
-  /** Restores the stale warning when Undo brings back a reverted draft. */
+  // Restores the stale warning when Undo brings back a reverted draft.
   private reverted: { source: string; base: string } | undefined;
-  /** Reset the caret and scroll position when loading a different diagram. */
   private another = false;
 
   constructor(
     private readonly elements: Elements,
     private readonly onApply: (requestId: number, source: string) => void,
-    /** Called when persisted state may have changed. */
     private readonly onChange: () => void,
   ) {
     const { input, apply, revert, viewButtons } = elements;
@@ -73,7 +64,7 @@ export class SourceEditor {
       if (this.editedFrom !== this.formatted()) {
         this.reverted = { source: input.value, base: this.editedFrom };
       }
-      // The undoable replacement requires the editor to have focus.
+      // execCommand needs focus.
       input.focus();
       this.load(true);
     });
@@ -87,7 +78,6 @@ export class SourceEditor {
     };
   }
 
-  /** Ignores invalid or obsolete saved values. */
   restore({ view, editor }: Record<string, unknown>): void {
     if (VIEW_MODES.includes(view as ViewMode)) this.view = view as ViewMode;
     if (
@@ -103,26 +93,20 @@ export class SourceEditor {
     }
   }
 
-  /** The content to focus in the current view. */
   content(drawing: HTMLElement): HTMLElement {
     return this.view === "source" ? this.elements.input : drawing;
   }
 
-  /**
-   * Accepts a render from the host, preserving drafts and marking them stale when their base
-   * differs. A new diagram resets the caret; a revision keeps the reading position.
-   */
+  // Drafts whose base differs are kept and marked stale.
   diagramChanged(renderer: Renderer, source: string, requestId: number, another: boolean): void {
     this.diagram = { renderer, source, requestId };
     if (another) this.another = true;
     const { input, staleNote, viewButtons } = this.elements;
-    // Icon-only buttons need accessible names.
     viewButtons.visual.title = `Show the ${renderer.noun}`;
     viewButtons.split.title = `Show the ${renderer.noun} and its source`;
     viewButtons.source.title = `Edit the ${renderer.sourceName}`;
     input.setAttribute("aria-label", renderer.sourceName);
     staleNote.textContent = `The ${renderer.noun} changed since you started editing. Apply replaces it with your version.`;
-    // Restore the preferred view once source is available.
     this.setView(this.view);
     const edited = this.differs();
     if (!this.sourceShown && !edited) {
@@ -148,15 +132,12 @@ export class SourceEditor {
     }
   }
 
-  /** Whether error locations in the current diagram also apply to this draft. */
+  // Whether error locations in the diagram apply to the draft.
   showsDiagram(): boolean {
     return this.diagram !== undefined && this.elements.staleNote.hidden === true;
   }
 
-  /**
-   * Selects an error location using one-based lines and columns. Without a column, selects the
-   * line excluding indentation. Opens the split view if the source is hidden.
-   */
+  // One-based. Without a column, selects the line without indentation.
   reveal(line: number, column: number | undefined): void {
     if (this.view === "visual") this.setView("split");
     const { input } = this.elements;
@@ -179,13 +160,11 @@ export class SourceEditor {
     scrollToSelection(input);
   }
 
-  /** Hides the source while preserving the draft and preferred view for the next diagram. */
   diagramGone(): void {
     this.diagram = undefined;
     this.setView(this.view);
   }
 
-  /** Changes views without discarding unapplied edits. */
   setView(mode: ViewMode): void {
     this.view = mode;
     // Before the first diagram there is no source to show.
@@ -202,7 +181,6 @@ export class SourceEditor {
     this.onChange();
   }
 
-  /** Formats only when needed, once per diagram, even when switching views repeatedly. */
   private formatted(): string {
     const { diagram } = this;
     if (!diagram) return "";
@@ -212,7 +190,6 @@ export class SourceEditor {
     return diagram.formatted;
   }
 
-  /** Replaces the draft with the rendered source. */
   private load(undoable = false): void {
     this.editedFrom = this.formatted();
     replaceText(this.elements.input, this.editedFrom, undoable, !this.another);
@@ -221,7 +198,6 @@ export class SourceEditor {
     this.updateActions();
   }
 
-  /** Reconciles edits and Undo/Redo with the draft's base. */
   private edited(): void {
     const { input, staleNote } = this.elements;
     if (this.diagram && input.value === this.formatted()) {
@@ -235,17 +211,14 @@ export class SourceEditor {
     this.updateActions();
   }
 
-  /**
-   * A stale draft still differs after all its edits are undone: its base is an older diagram.
-   */
+  // A stale draft differs even with all edits undone.
   private differs(): boolean {
     return this.elements.input.value !== this.editedFrom || !this.elements.staleNote.hidden;
   }
 
   private updateActions(): void {
     const { apply, revert, input } = this.elements;
-    // Disabling a focused button moves focus to the body. Return it to the editor, unless the
-    // user has already switched to another part of VS Code.
+    // Disabling a focused button moves focus to the body: return it to the editor.
     const actionFocused = document.activeElement === apply || document.activeElement === revert;
     apply.disabled = revert.disabled = !this.differs();
     if (actionFocused && apply.disabled && document.hasFocus()) input.focus();
@@ -263,20 +236,14 @@ export class SourceEditor {
   }
 }
 
-/**
- * Bound undoable replacements by changed characters and inserted lines × total lines.
- * Chromium's line-by-line insertion can take seconds for large chart sources; above these
- * limits, assign the value directly and sacrifice undo history to keep the editor responsive.
- */
+// Chromium's undoable insertion can take seconds for large sources. Above these limits (changed
+// characters; inserted × total lines), assign the value and lose undo history.
 const UNDOABLE_CHANGE = 100_000;
 const UNDOABLE_LINES = 200_000;
 
 const lineCount = (text: string) => (text.match(/\n/g)?.length ?? 0) + 1;
 
-/**
- * Replaces only the changed span when possible, so Revert can be undone. With keepPlace, adjusts
- * the selection for the replacement and preserves scrolling; otherwise starts at the top.
- */
+// Replaces only the changed span, so Revert can be undone.
 function replaceText(
   input: HTMLTextAreaElement,
   text: string,
@@ -323,10 +290,7 @@ function replaceText(
   input.scrollLeft = keepPlace ? scrollLeft : 0;
 }
 
-/**
- * Textarea selection APIs do not scroll to the selection. Measure its wrapped position in a
- * hidden copy, then center it if it is outside the visible area.
- */
+// Textarea selection APIs do not scroll: measure the wrapped position in a hidden copy.
 function scrollToSelection(input: HTMLTextAreaElement): void {
   const style = getComputedStyle(input);
   const copy = document.createElement("div");

@@ -1,10 +1,9 @@
-// Finds the nodes and relationships in a drawing that Mermaid made, which the panel selects, marks
-// and links: from the SVG, and from the diagram's database where the SVG leaves out what it shows.
+// Finds the nodes and relationships in a Mermaid drawing, from the SVG and the diagram's database.
 
 import type { DiagramNode } from "../protocol";
 import type { WebLink } from "./renderer";
 
-/** The diagram types whose items Mermaid draws without their data, which their databases have. */
+// Diagram types whose items are drawn without their data, which their databases have.
 export const WITH_DATABASE = new Set([
   "pie",
   "gitGraph",
@@ -35,7 +34,7 @@ export const WITH_DATABASE = new Set([
   "eventmodeling",
 ]);
 
-/** A packet field, or a piece of one, from its first bit to its last. */
+// A packet field, or a piece of one.
 interface PacketBlock {
   start: number;
   end: number;
@@ -43,14 +42,12 @@ interface PacketBlock {
   label: string;
 }
 
-/** An item of a tree that Mermaid draws, below a root without a name. */
 interface TreeItem {
   name: string;
   value?: number;
   children?: TreeItem[];
 }
 
-/** An edge of a diagram that Mermaid lays out as a flowchart. */
 interface ShapeEdge {
   id: string;
   start: string;
@@ -59,17 +56,14 @@ interface ShapeEdge {
   thickness?: string;
   arrowTypeStart?: string;
   arrowTypeEnd?: string;
-  /** Whether the source gives the edge its id, as in A e1@--> B, rather than Mermaid. */
+  // Whether the source gives the id, as in A e1@--> B.
   isUserDefinedId?: boolean;
-  /** Where a flowchart's edge comes in its animation of steps, if the source gives a valid one. */
+  // Position in a flowchart's step animation.
   step?: number;
 }
 
 export interface DiagramDb {
-  /**
-   * The nodes and edges of a diagram that Mermaid lays out as a flowchart, with the styles that the
-   * source gives a node and its classes.
-   */
+  // Diagrams laid out as flowcharts.
   getData?(): {
     nodes: {
       id: string;
@@ -85,24 +79,17 @@ export interface DiagramDb {
   getSections?(): Map<string, number>;
   getCommitsArray?(): { id: string; message: string; seq: number; tags: string[] }[];
   getDirection?(): string;
-  /**
-   * A user journey's tasks, with their scores, or a Gantt chart's, with their ids and the start
-   * and end that the source gives them, such as "after a1".
-   */
+  // A user journey's or a Gantt chart's tasks.
   getTasks?(): {
     task?: string;
     score?: number;
     id?: string;
     raw?: { startTime?: { startData?: string }; endTime?: { data?: string } };
   }[];
-  /** A Gantt chart's task links, by task id; a sankey diagram's flows, as an array. */
+  // Gantt task links by task id, or sankey flows.
   getLinks?(): Map<string, unknown> | unknown[];
-  /** A sequence diagram's actors, by id, with their labels and links by name. */
   getActors?(): Map<string, { description?: string; links?: Record<string, unknown> | null }>;
-  /**
-   * An architecture diagram's edges, with whether they have an arrowhead into either end, or a
-   * block diagram's.
-   */
+  // Architecture or block diagram edges.
   getEdges?(): (Partial<ShapeEdge> & {
     lhsId?: string;
     rhsId?: string;
@@ -110,20 +97,16 @@ export interface DiagramDb {
     rhsInto?: boolean;
     title?: string;
   })[];
-  /**
-   * Styles a flowchart's links, which linkStyle lines number in the order of getEdges: as Mermaid
-   * reads them, invisible ones too.
-   */
+  // linkStyle numbers links in getEdges order, invisible ones included.
   updateLink?(positions: (number | "default")[], style: string[]): void;
-  /** A class diagram's classes, which tell it from other diagrams. */
+  // Tells class diagrams from others.
   getClasses?(): unknown;
-  /** A requirement diagram's relationships, which getData leaves the undefined ends out of. */
+  // Requirement relationships, including undefined ends that getData leaves out.
   getRelationships?(): { src?: unknown; dst?: unknown }[];
-  /** A C4 diagram's relationships, in the order it draws them. */
+  // C4 relationships, in drawing order.
   getRels?(): { from: string; to: string; label?: { text?: string } }[];
-  /** A C4 diagram's boundaries in the boundary with the alias, the whole diagram being "global". */
+  // C4 boundaries within a parent; the whole diagram is "global".
   getBoundaries?(parent: string): { alias: string; label: { text: string } }[];
-  /** A sankey diagram's nodes and flows, in the order it draws them. */
   getGraph?(): {
     nodes: { id: string }[];
     links: { source: string; target: string; value: number }[];
@@ -131,45 +114,39 @@ export interface DiagramDb {
   getXYChartData?(): {
     plots: { type: "bar" | "line"; title: string; data: [string, number][] }[];
   };
-  /** A treemap's sections and leaves, or a tree view's folders and files. */
+  // A treemap or tree view.
   getRoot?(): TreeItem;
-  /** A packet diagram's fields, by row, a field that goes on in the next row in pieces. */
+  // Packet fields by row; a field continuing on the next row comes in pieces.
   getPacket?(): PacketBlock[][];
-  /** A radar chart's axes and curves, in the order it draws them. */
   getAxes?(): { name: string; label: string }[];
   getCurves?(): { name: string; label: string }[];
-  /** A Venn diagram's sets and their overlaps, and the texts in them, with their sets sorted. */
+  // Venn sets and overlaps, with their sets sorted.
   getSubsetData?(): { sets: string[]; label?: string }[];
   getTextData?(): { sets: string[]; id: string; label?: string }[];
-  /** A Wardley map's components and links, and the components of its pipelines. */
   getWardleyData?(): {
     nodes: { id: string; label: string }[];
     links: { source: string; target: string; label?: string }[];
     pipelines: { nodeId: string; componentIds: string[] }[];
   };
-  /** A Cynefin diagram's transitions between domains. */
+  // Cynefin transitions.
   getTransitions?(): { from: string; to: string; label?: string }[];
-  /** An event model's boxes and the arrows between them, in the order it draws them. */
+  // An event model, in drawing order.
   getState?(): {
     boxes: EventBox[];
     relations: { sourceBox: EventBox; targetBox: EventBox }[];
   };
 }
 
-/** A box of an event model, which shows the entity of a time frame. */
 interface EventBox {
   frame: { name: string };
 }
 
-/** The nodes of a drawing, and the elements that show them. */
 export interface DrawnNodes {
-  /** The node that each element shows. */
   byElement: ReadonlyMap<Element, DiagramNode>;
-  /** The elements that show each node, by id: a Gantt task's bar and label, for one. */
+  // By id: a Gantt task's bar and label, for one.
   elements: ReadonlyMap<string, Element[]>;
-  /** Each node once. */
   nodes: DiagramNode[];
-  /** The links in the source from nodes, by node id. */
+  // Links in the source, by node id.
   links: ReadonlyMap<string, WebLink[]>;
 }
 
@@ -180,10 +157,7 @@ export const NOTHING_DRAWN: DrawnNodes = {
   links: new Map(),
 };
 
-/**
- * The text of an element, with its lines (separate text nodes) separated by spaces, and its
- * formulas as the source writes them, as "$$x^2$$", where the drawing has their TeX.
- */
+// Lines (separate text nodes) joined by spaces; formulas as their TeX source, "$$x^2$$".
 function textOf(element: Element): string {
   const parts: string[] = [];
   const visit = (node: Node) => {
@@ -197,14 +171,9 @@ function textOf(element: Element): string {
   return parts.join(" ").replace(/\s+/g, " ").trim();
 }
 
-/**
- * The name of a node or group: the title of a box that also shows a stereotype, class members,
- * entity attributes, a C4 type and description, requirement fields, kanban card metadata or
- * further state descriptions. Mermaid names a state by its first description (an alias is one),
- * and shows its id only when it has none.
- */
+// The title of a box that may also show stereotypes, members, attributes, descriptions etc.
 function nameOf(element: Element): string {
-  // A state label that is not split in title and descriptions starts with an empty rect.
+  // A state label not split into title and descriptions starts with an empty rect.
   const title = element.querySelector(
     ".label-group, .label.name, .cluster-label, .c4-name, .statediagram-state > .label > :first-child:not(rect)",
   );
@@ -212,7 +181,7 @@ function nameOf(element: Element): string {
     return textOf(title);
   }
   // Requirement boxes and kanban cards draw each line as a label, the name first after any
-  // "<<Requirement>>" or "<<Element>>" line.
+  // "<<Requirement>>" line.
   for (const line of element.querySelectorAll(".label")) {
     const text = textOf(line);
     if (text && !/^<<.*>>$/.test(text)) {
@@ -222,31 +191,24 @@ function nameOf(element: Element): string {
   return textOf(element);
 }
 
-/** The text of a label written as HTML. */
 function plainText(text: string): string {
-  // Most labels are plain text: parse only those with entities or markup.
+  // Parse only labels with entities or markup.
   if (!/[<&]/.test(text)) return text.replace(/\s+/g, " ").trim();
   const doc = new DOMParser().parseFromString(text.replace(/<br\s*\/?\s*>/gi, " "), "text/html");
   return textOf(doc.body);
 }
 
-/** Whether a line has an arrowhead at its start, and at its end. */
 const arrowheads = (line: Element) =>
   [line.hasAttribute("marker-start"), line.hasAttribute("marker-end")] as const;
 
-/** The nodes found in a drawing so far, and how each diagram type's finder adds more. */
 class Finder {
   readonly byElement = new Map<Element, DiagramNode>();
-  /** Each node and relationship by id, in the order they were first added. */
+  // In the order first added.
   readonly nodes = new Map<string, DiagramNode>();
-  /** The elements that show each node, by id. */
   readonly elements = new Map<string, Element[]>();
-  /** The ids that uniqueId gave out, or that nodes yet to be added take. */
+  // Ids given out by uniqueId, or reserved for nodes yet to be added.
   readonly taken = new Set<string>();
-  /**
-   * The next number to try for each name and relationship id, so that many equal names, or
-   * relationships between the same ends, take linear time.
-   */
+  // Next number to try per name, so that many equal names take linear time.
   private readonly next = new Map<string, number>();
 
   constructor(
@@ -267,7 +229,7 @@ class Finder {
     return id.startsWith(this.idPrefix) ? id.slice(this.idPrefix.length) : id;
   }
 
-  /** Makes the element show the node, and a button for the keyboard if it is the node's first. */
+  // The node's first element is its keyboard button.
   add(element: Element, node: DiagramNode): void {
     element.classList.add("diagram-node");
     element.setAttribute("data-diagram-id", node.id);
@@ -286,7 +248,7 @@ class Finder {
     }
   }
 
-  /** Adds the elements that match the selector to the nodes in order, if there is one for each. */
+  // Only if there is one element per node.
   inOrder(selector: string, nodes: readonly DiagramNode[]): void {
     const elements = this.all(selector);
     if (elements.length === nodes.length) {
@@ -294,10 +256,7 @@ class Finder {
     }
   }
 
-  /**
-   * An id for a node that goes by its name, or for a relationship, numbering names taken by others:
-   * "a", "a (2)", …
-   */
+  // "a", "a (2)", …
   uniqueId(name: string): string {
     let id = name;
     let n = this.next.get(name) ?? 2;
@@ -307,15 +266,11 @@ class Finder {
     return id;
   }
 
-  /** A node that goes by its label, or by the name given. */
   named(label: string, name = label): DiagramNode {
     return { id: this.uniqueId(name), label };
   }
 
-  /**
-   * A relationship, which an arrowhead at its start alone points from the target to the source.
-   * One without an id of its own goes by its ends.
-   */
+  // An arrowhead at the start alone points from target to source.
   relation(
     source: string,
     target: string,
@@ -335,7 +290,7 @@ class Finder {
     };
   }
 
-  /** Adds the line of a relationship, and a wide invisible copy that is easier to point at. */
+  // Plus a wide invisible copy that is easier to point at.
   addLine(line: Element, node: DiagramNode): void {
     this.add(line, node);
     const hit = line.cloneNode(false) as SVGElement;
@@ -348,7 +303,7 @@ class Finder {
     this.add(hit, node);
   }
 
-  /** Adds the lines of links in order, with the labels, in order, of the links that have one. */
+  // Labels are only drawn for links that have one.
   addLines(
     lineSelector: string,
     labelSelector: string,
@@ -369,23 +324,15 @@ class Finder {
   }
 }
 
-/**
- * Nodes, icon and image shapes among them, and groups (subgraphs, composite states, kanban
- * columns, architecture services, …). Their element ids are the source ids, some decorated like
- * "flowchart-A-0". Mermaid makes up the ids of mind map nodes ("node_0"), notes ("note0",
- * "state-A----note-2") and subgraphs titled with spaces and no id ("subGraph0"), so those go by
- * their names. So do the lollipop interfaces of class diagrams ("interface0"), which Mermaid draws
- * for each class that has one: those of a name are one interface. Names take no id of the others,
- * wherever they are drawn: a note "B" is not state B. Returns the id of each node by the id that
- * Mermaid draws it with.
- */
+// Node ids by drawn id (some decorated, like "flowchart-A-0"). Mind map nodes, notes, unnamed
+// subgraphs and class lollipop interfaces have made-up ids, so go by name.
 function shapes(f: Finder): Map<string, string> {
   const found = Array.from(
     f.all(
       "g.node, g.rough-node, g.icon-shape, g.image-shape, g.cluster, g.statediagram-cluster, g.architecture-service",
     ),
     (element) => {
-      // A use case diagram keeps the source id in an attribute of its own.
+      // Use case diagrams keep the source id in an attribute.
       const domId =
         element.getAttribute("data-usecase-id") ??
         element.getAttribute("data-id") ??
@@ -393,8 +340,7 @@ function shapes(f: Finder): Map<string, string> {
       const decorated =
         /^(?:flowchart|agentflow|state|classId|entity)-(.+)-\d+$|^service-(.+)$/.exec(domId);
       const sourceId = decorated?.[1] ?? decorated?.[2] ?? domId;
-      // A block diagram group without a label goes by its id, unless Mermaid made one up for it, as
-      // do a state diagram's choices, forks and joins, which show none.
+      // Unlabeled block groups go by id unless made up; state choices, forks and joins likewise.
       const unnamed =
         (element.querySelector(":scope > rect.composite") && !/^id-\w+-\d+$/.test(domId)) ||
         element.matches(".node.statediagram-state");
@@ -408,9 +354,8 @@ function shapes(f: Finder): Map<string, string> {
       return { element, domId, sourceId, label, id };
     },
   );
-  // Mermaid draws groups before the nodes in them, and some from the last to the first: the
-  // database has the nodes in the order of the source, which they are listed and stepped in, and
-  // a group goes before the first of the nodes in it, where the source writes it.
+  // Mermaid draws groups first, some in reverse: sort by source order, each group before its
+  // first node.
   const nodes = f.db?.getData?.().nodes ?? [];
   const order = new Map(nodes.map(({ id }, index) => [id, index]));
   const parents = new Map(nodes.flatMap(({ id, parentId }) => (parentId ? [[id, parentId]] : [])));
@@ -442,11 +387,7 @@ function shapes(f: Finder): Map<string, string> {
   return nodeIds;
 }
 
-/**
- * The edges of flowcharts and class, state, ER, requirement, block and use case diagrams, which
- * Mermaid lays out alike, joined to their lines by their ids in the database. `nodeIds` gives the
- * id of each node by the id that Mermaid draws it with.
- */
+// Edges of diagrams laid out as flowcharts, joined to their lines by database id.
 function shapeEdges(f: Finder, nodeIds: ReadonlyMap<string, string>): void {
   const edges =
     f.db?.getData?.().edges ??
@@ -455,7 +396,7 @@ function shapeEdges(f: Finder, nodeIds: ReadonlyMap<string, string>): void {
     );
   const counts = new Map<string, number>();
   for (const edge of edges) counts.set(edge.id, (counts.get(edge.id) ?? 0) + 1);
-  // The number of each link in linkStyle lines, where its id tells it, as getData leaves some out.
+  // linkStyle numbers by id, as getData leaves some links out.
   const links = new Map<string, number | undefined>();
   if (f.db?.updateLink) {
     for (const [index, { id }] of (f.db.getEdges?.() ?? []).entries()) {
@@ -466,17 +407,15 @@ function shapeEdges(f: Finder, nodeIds: ReadonlyMap<string, string>): void {
     new Map(Array.from(f.all(selector), (element) => [element.getAttribute("data-id"), element]));
   const labels = byId(".edgeLabel .label[data-id]");
   const lines = byId('[data-et="edge"][data-id]');
-  // Diamonds, lollipops, cardinalities and "contains" circles are not arrowheads, nor is the open
-  // end of a block diagram edge.
+  // Diamonds, lollipops, cardinalities, "contains" circles and open block ends aren't arrowheads.
   const arrowhead = (marker = "") =>
     /^(?:arrow_(?!open$)|extension$|dependency$|requirement_arrow$)/.test(marker);
   for (const edge of edges) {
-    // Block diagrams draw their edges with the drawing's id in front of theirs.
+    // Block diagrams prefix edge ids with the drawing's id.
     const line = lines.get(edge.id) ?? lines.get(f.idPrefix + edge.id);
     const source = nodeIds.get(edge.start) ?? edge.start;
     const target = nodeIds.get(edge.end) ?? edge.end;
-    // An id that several edges share tells none of them apart, and an end that is not a node,
-    // like a state diagram's start, cannot describe the edge.
+    // Shared ids are ambiguous; ends that aren't nodes, like a start state, can't describe it.
     if (
       !line ||
       counts.get(edge.id) !== 1 ||
@@ -496,12 +435,7 @@ function shapeEdges(f: Finder, nodeIds: ReadonlyMap<string, string>): void {
   }
 }
 
-/**
- * C4 boundaries, groups of a box and its texts, which Mermaid draws without ids: inner ones before
- * outer ones, and none for the diagram as a whole. And relationships, one for each pair of ends,
- * in the order of the database: a line, with an arrowhead at either end, followed by the texts of
- * its label.
- */
+// C4 boundaries, drawn without ids, inner before outer; relationships in database order.
 function c4(f: Finder): void {
   const boundaries: DiagramNode[] = [];
   const addBoundaries = (parent: string) => {
@@ -519,7 +453,7 @@ function c4(f: Finder): void {
   );
   if (lines.length !== rels.length) return;
   for (const [i, { from, to, label }] of rels.entries()) {
-    // An end that was not found, such as a boundary drawn unlike above, cannot describe it.
+    // An end not found can't describe it.
     if (!f.has(from) || !f.has(to)) continue;
     const line = lines[i] as Element;
     const node = f.relation(from, to, label?.text ?? "", arrowheads(line));
@@ -531,11 +465,7 @@ function c4(f: Finder): void {
   }
 }
 
-/**
- * Architecture groups: a box, followed by a group of its icon and title. And edges, which Mermaid
- * draws in a group of their line, arrowheads and title, with an id from their ends, as for a
- * flowchart edge without an id: one for each pair of ends.
- */
+// Architecture groups and edges; edge ids come from their ends.
 function architecture(f: Finder): void {
   for (const box of f.all("g.architecture-groups > rect.node-bkg")) {
     const id = f.withoutPrefix(box.id).replace(/^group-/, "");
@@ -556,20 +486,16 @@ function architecture(f: Finder): void {
   for (const { lhsId, rhsId, lhsInto, rhsInto, title } of edges) {
     const id = `L_${lhsId}_${rhsId}_0`;
     const line = f.svg.querySelector(`path.edge[id="${CSS.escape(f.idPrefix + id)}"]`);
-    // Junctions are no nodes to describe an edge by.
+    // Junctions aren't nodes.
     if (!line || pairs.get(id) !== 1 || !f.has(lhsId) || !f.has(rhsId)) continue;
     const node = f.relation(lhsId, rhsId, title ?? "", [!!lhsInto, !!rhsInto], id);
-    // The line first, to take the focus for the keyboard.
+    // The line first, to take keyboard focus.
     const parts = Array.from(line.parentElement?.children ?? []).filter((part) => part !== line);
     f.addLine(line, node);
     for (const part of parts) f.add(part, node);
   }
 }
 
-/**
- * Sankey nodes, a bar and a label each (two in the outlined style), and flows, in the order of the
- * database.
- */
 function sankey(f: Finder): void {
   const graph = f.db?.getGraph?.();
   const nodes = (graph?.nodes ?? []).map(({ id }) => ({ id, label: id }));
@@ -585,11 +511,7 @@ function sankey(f: Finder): void {
   }
 }
 
-/**
- * Wardley map anchors and components, and the links between them but for those that Mermaid
- * leaves out: to components that are not there, and from a pipeline's components to the
- * pipeline. Both in the order of the database; the labels of links follow all lines.
- */
+// Mermaid leaves out links to missing components and from pipeline components to the pipeline.
 function wardley(f: Finder): void {
   const data = f.db?.getWardleyData?.();
   if (!data) return;
@@ -613,11 +535,7 @@ function wardley(f: Finder): void {
   );
 }
 
-/**
- * Cynefin domains, by their names in the source: the four quadrants, then confusion in the middle,
- * each a background and a label. And transitions between domains: curves, each followed by its
- * label if it has one. The items in domains are found with timeline periods.
- */
+// Domain items are found with timeline periods.
 function cynefin(f: Finder): void {
   const domains = Array.from(f.all("text.cynefinDomainLabel"), (title) => {
     const label = textOf(title);
@@ -633,10 +551,7 @@ function cynefin(f: Finder): void {
   f.addLines("path.cynefinArrowLine", "text.cynefinArrowLabel", transitions);
 }
 
-/**
- * Event model boxes, which go by their time frames, as in "tf 01", and are named by the entities
- * they show in bold, and the arrows between them.
- */
+// Boxes go by time frame ("tf 01"), named by their bold entity.
 function eventModel(f: Finder): void {
   const boxes = f.all("g.em-box");
   const state = boxes.length > 0 ? f.db?.getState?.() : undefined;
@@ -653,13 +568,8 @@ function eventModel(f: Finder): void {
   }
 }
 
-/**
- * Sequence diagram participants, in the order of the source, with their footer copies and menus
- * of links, and messages.
- */
 function sequence(f: Finder): void {
-  // Mermaid draws the participants from the last to the first, for the menus of the earlier to
-  // lie over the later: the database has them in the order of the source, left to right.
+  // Mermaid draws participants last to first, so earlier menus lie on top; use source order.
   const headers = Map.groupBy(
     f.all('[data-et="participant"]'),
     (element) => element.getAttribute("data-id") || textOf(element),
@@ -673,8 +583,8 @@ function sequence(f: Finder): void {
       f.add(element, node);
     }
   }
-  // Footer copies retain the participant's name, even when several share a display label, but for
-  // databases, whose label is beside them, and queues: they go by a label that only they have.
+  // Footers carry the participant's name, except databases and queues, which go by a label only
+  // they have.
   const labeled = Map.groupBy(participants.values(), ({ label }) => label);
   for (const element of f.all(".actor-bottom")) {
     const group =
@@ -684,7 +594,7 @@ function sequence(f: Finder): void {
       name === null ? (labeled.get(group ? textOf(group) : "") ?? []) : [participants.get(name)];
     if (group && node && !other) f.add(group, node);
   }
-  // An actor's menu of links, when sequence.forceMenus shows it, is numbered like its lifeline.
+  // Shown by sequence.forceMenus; numbered like its lifeline.
   for (const menu of f.all('g.actorPopupMenu:not([display="none"])')) {
     const line = f.svg.querySelector(`line[id="${CSS.escape(menu.id.replace(/_popup$/, ""))}"]`);
     const node = participants.get(line?.getAttribute("data-id") ?? "");
@@ -705,8 +615,7 @@ function sequence(f: Finder): void {
       continue;
     const text = plainText(message.message ?? "");
     const node = f.relation(message.from, message.to, text, arrowheads(line), id, "message");
-    // Mermaid emits the message's label immediately before its line (self messages are paths), a
-    // formula in a foreign object.
+    // Labels come right before the line; formulas in a foreignObject.
     const labels = /\$\$.*?\$\$/.test(text) ? ".messageText, foreignObject" : ".messageText";
     let label = line.previousElementSibling;
     f.addLine(line, node);
@@ -717,10 +626,7 @@ function sequence(f: Finder): void {
   }
 }
 
-/**
- * Gantt tasks: a bar and a label with ids derived from the task id. Looked up in the drawing, as a
- * draft's is in a shadow root, out of the document's reach.
- */
+// Looked up in the drawing, as a draft's is in a shadow root.
 function gantt(f: Finder): void {
   for (const bar of f.all("rect.task")) {
     const text = f.svg.getElementById(`${bar.id}-text`);
@@ -731,10 +637,7 @@ function gantt(f: Finder): void {
   }
 }
 
-/**
- * User journey tasks: groups of the task box, its people, and a line down to its score. The name
- * is in a text per line, which may also have an HTML label (in a switch) to stand in for.
- */
+// The name is in one text per line.
 function journey(f: Finder): void {
   for (const line of f.all("line.task-line")) {
     const group = line.parentElement;
@@ -743,10 +646,7 @@ function journey(f: Finder): void {
   }
 }
 
-/**
- * Pie slices and their percentages, for the sections of at least 1% (see createPieArcs in
- * Mermaid), and legend entries, for all sections.
- */
+// Mermaid draws slices only for sections of at least 1% (createPieArcs); legends for all.
 function pie(f: Finder): void {
   const sections = Array.from(f.db?.getSections?.() ?? [], ([label, value]) => ({
     node: { id: label, label },
@@ -762,14 +662,8 @@ function pie(f: Finder): void {
   );
 }
 
-/**
- * Git graph commits: one or more bullets each, with the commit id among their classes, in the
- * order of the database's commits (reversed from bottom to top), and a label with the id except
- * for merges and cherry-picks (or with showCommitLabel off). Mermaid generates ids like
- * "1-7754f83" at random in each parse, so those commits go by their sequence number, and are named
- * by the drawn id. Their tags follow in the same order, each commit's last first, as a box, a hole
- * and a text. Tags need not be unique. And branches, by their labels.
- */
+// Generated commit ids ("1-7754f83", random per parse) go by sequence number. Tags follow in
+// commit order, each commit's last first.
 function gitGraph(f: Finder): void {
   const commits = f.db?.getCommitsArray?.() ?? [];
   if (f.db?.getDirection?.() === "BT") commits.reverse();
@@ -822,10 +716,6 @@ function gitGraph(f: Finder): void {
   }
 }
 
-/**
- * XY chart bars, in the order of their plot's data, and lines (Mermaid draws no points), named
- * like chart items.
- */
 function xyChart(f: Finder): void {
   const plots = f.db?.getXYChartData?.().plots ?? [];
   for (const [i, { type, title, data }] of plots.entries()) {
@@ -842,10 +732,7 @@ function xyChart(f: Finder): void {
   }
 }
 
-/**
- * Timeline periods and events, quadrant chart points, the problems and causes of Ishikawa
- * diagrams, and the items of Cynefin domains, but for the count of those left out: by their texts.
- */
+// Items that go by their text.
 function textItems(f: Finder): void {
   for (const element of f.all(
     "g.timeline-node, g.data-point, g.ishikawa-head-group, g.ishikawa-label-group, g.ishikawa-sub-group, g.cynefin-items > g:has(> rect.cynefinItem)",
@@ -854,7 +741,6 @@ function textItems(f: Finder): void {
   }
 }
 
-/** Railroad diagram rules, by their names, which Mermaid draws followed by " =". */
 function railroad(f: Finder): void {
   for (const rule of f.all("g.railroad-rule")) {
     const name = rule.querySelector(".railroad-rule-name");
@@ -863,13 +749,7 @@ function railroad(f: Finder): void {
   }
 }
 
-/**
- * Packet fields, by their labels: a box, its label and its bit numbers each, in the order of the
- * database. A field that goes on in the next row is in pieces of the same label, which Mermaid
- * counts a bit short (their bits are their end less their start), and whole fields not. So two
- * fields of the same label that both go on in the next row, the second at the start of a row,
- * look like one.
- */
+// Pieces of a field split across rows have bits = end - start; whole fields have one more.
 function packet(f: Finder): void {
   const rows = f.db?.getPacket?.() ?? [];
   const boxes = f.all("rect.packetBlock");
@@ -894,10 +774,7 @@ function packet(f: Finder): void {
   }
 }
 
-/**
- * Radar chart axes and curves, which go by their names in the source, not their labels: the curves
- * with their legend entries, which Mermaid numbers in the order of the database.
- */
+// By source name, not label.
 function radar(f: Finder): void {
   const axes = (f.db?.getAxes?.() ?? []).map(({ name, label }) => f.named(label, name));
   f.inOrder("text.radarAxisLabel", axes);
@@ -909,11 +786,7 @@ function radar(f: Finder): void {
   }
 }
 
-/**
- * Venn diagram sets and the overlaps in the source, which go by their sets, as in "A,B", and are
- * drawn with them joined by "_". Mermaid draws other overlaps too, and the texts in the order of
- * the first text in each area.
- */
+// Sets and source overlaps go by their sets ("A,B"), drawn joined by "_".
 function venn(f: Finder): void {
   const areas = new Map(
     (f.db?.getSubsetData?.() ?? []).map(({ sets, label }) => [
@@ -932,7 +805,7 @@ function venn(f: Finder): void {
   );
 }
 
-/** The items of a tree in the order of the source, which go by their paths, as chart items do. */
+// In source order, by path, as chart items.
 function treeNodes(f: Finder, root: TreeItem): Map<TreeItem, DiagramNode> {
   const nodes = new Map<TreeItem, DiagramNode>();
   const visit = (item: TreeItem, path: string) => {
@@ -946,17 +819,13 @@ function treeNodes(f: Finder, root: TreeItem): Map<TreeItem, DiagramNode> {
   return nodes;
 }
 
-/** Tree view items, which Mermaid draws in the order of the source, after a root of its own. */
+// Drawn in source order after a root of Mermaid's own.
 function treeView(f: Finder): void {
   const tree = f.svg.querySelector("g.tree-view") ? f.db?.getRoot?.() : undefined;
   if (tree) f.inOrder("g.tree-view > g ~ g", [...treeNodes(f, tree).values()]);
 }
 
-/**
- * Treemap sections and leaves, whose titles Mermaid may cut short. d3 lays them out with each
- * section's items by their total values, largest first, and Mermaid draws the sections breadth
- * first, after the hidden root, and then the leaves depth first.
- */
+// d3 sorts items by total value; Mermaid draws sections breadth first, then leaves depth first.
 function treemap(f: Finder): void {
   const root = f.svg.querySelector(".treemapContainer") ? f.db?.getRoot?.() : undefined;
   if (!root) return;
@@ -991,10 +860,7 @@ function treemap(f: Finder): void {
   f.inOrder("g.treemapLeafGroup", leaves.map(node));
 }
 
-/**
- * Finds the nodes and relationships of the drawing, which Mermaid gave ids that start with the
- * prefix, and makes them buttons for the keyboard, one for each node.
- */
+// Mermaid prefixes the drawing's ids with idPrefix.
 export function findNodes(
   svg: SVGSVGElement,
   idPrefix: string,
@@ -1029,11 +895,6 @@ export function findNodes(
   return { byElement, elements, nodes: [...nodes.values()], links: linksOf(f) };
 }
 
-/**
- * The links in the source from nodes: those that a click directive wraps in a link, those with a
- * link in their label, the first one if several, linked Gantt tasks, and sequence diagram actors
- * with links, which can have several.
- */
 function linksOf(f: Finder): Map<string, WebLink[]> {
   const links = new Map<string, WebLink[]>();
   const toLink = (url: unknown) =>
@@ -1046,14 +907,13 @@ function linksOf(f: Finder): Map<string, WebLink[]> {
       links.set(node.id, [target]);
     }
   }
-  // A Gantt chart draws none, but keeps them by task id. (A state diagram keeps objects there.)
+  // Gantt charts draw none, but keep them by task id; state diagrams keep objects there.
   const taskLinks = f.db?.getLinks?.();
   for (const [id, url] of taskLinks instanceof Map ? taskLinks : []) {
     const target = toLink(url);
     if (target && f.has(id)) links.set(id, [target]);
   }
-  // An actor's links are drawn as a menu, which Mermaid hides unless sequence.forceMenus, and
-  // opens with a script that the strict security level removes.
+  // Actor menus are hidden unless sequence.forceMenus, and their opening script is stripped.
   for (const [id, actor] of f.db?.getActors?.() ?? []) {
     const targets = Object.entries(actor.links ?? {}).flatMap(([name, url]) => {
       const target = toLink(url);

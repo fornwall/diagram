@@ -19,11 +19,9 @@ const OPEN_FENCE_COMMAND = "diagram.openFence";
 const OPEN_AT_CURSOR_COMMAND = "diagram.openAtCursor";
 const SETTINGS_SECTION = "diagram";
 const CODE_LENS_SETTING = "codeLens.enabled";
-/** The fence languages that VS Code's preview draws as Mermaid, from its Mermaid extension. */
+// From the Markdown Preview Mermaid Support extension.
 const MERMAID_LANGUAGES_SETTING = "markdown-mermaid.languages";
-/** Whether the active editor is a Markdown document with a diagram, as its context menu shows. */
 const EDITOR_HAS_DIAGRAM_CONTEXT = "diagram.editorHasDiagram";
-/** How long typing in the active editor goes on before it is looked through for diagrams again. */
 const TYPING_DELAY_MS = 250;
 
 export function registerMarkdownDiagrams(panel: DiagramPanel): vscode.Disposable[] {
@@ -65,7 +63,7 @@ class DiagramCodeLensProvider implements vscode.CodeLensProvider, vscode.Disposa
       return [];
     }
     const fences = findDocumentDiagramFences(document);
-    // Such as the old side of a Git diff, whose diagrams the panel shows without writing to it.
+    // Such as the old side of a Git diff.
     const readonly = fences.length > 0 && isReadonly(document);
     return fences.map((fence) => {
       const line = new vscode.Position(fence.openingLine, 0);
@@ -87,11 +85,7 @@ class DiagramCodeLensProvider implements vscode.CodeLensProvider, vscode.Disposa
   }
 }
 
-/**
- * Keeps the context key that shows Open Diagram at Cursor in the context menu of the active editor
- * only while it holds a diagram, also after typing or as settings, which settingsChanged tells,
- * change what counts as one.
- */
+// Shows Open Diagram at Cursor in the editor context menu only while the editor holds a diagram.
 function trackEditorDiagrams(settingsChanged: vscode.Event<void>): vscode.Disposable {
   let timer: ReturnType<typeof setTimeout> | undefined;
   let holds: boolean | undefined;
@@ -123,7 +117,6 @@ function trackEditorDiagrams(settingsChanged: vscode.Event<void>): vscode.Dispos
   );
 }
 
-/** Finds diagrams where VS Code's preview draws them, with its default for an invalid setting. */
 function readMermaidLanguages(): void {
   const words = vscode.workspace.getConfiguration().get<unknown>(MERMAID_LANGUAGES_SETTING);
   setMermaidLanguages(
@@ -141,7 +134,7 @@ async function openFence(panel: DiagramPanel, uri: vscode.Uri, fence: DiagramFen
     );
     return;
   }
-  // Open the block at its line in its language, also when edited, or else follow it where it moved.
+  // The block at its line, or else follow it where it moved.
   const fences = findDocumentDiagramFences(document);
   const current =
     fences.find(
@@ -183,10 +176,6 @@ async function openAtCursor(panel: DiagramPanel): Promise<void> {
   await openInPanel(panel, editor.document, fence);
 }
 
-/**
- * Opens a document diagram, bound to its block unless the document is read-only, and reports
- * failures that the webview cannot display.
- */
 async function openInPanel(
   panel: DiagramPanel,
   document: vscode.TextDocument,

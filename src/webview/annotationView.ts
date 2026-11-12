@@ -4,7 +4,7 @@ import type { Renderer } from "./renderer";
 const overlaps = (a: DOMRect, b: DOMRect) =>
   a.left < b.right + 4 && a.right > b.left - 4 && a.top < b.bottom + 4 && a.bottom > b.top - 4;
 
-/** Plain-text explanations with callouts that never intercept drawing interactions. */
+// Callouts never intercept drawing interactions.
 export class AnnotationView {
   private readonly panel = document.createElement("section");
   private readonly heading = document.createElement("div");
@@ -55,7 +55,6 @@ export class AnnotationView {
   private update(): void {
     this.apply(this.annotation);
     const marks = this.annotation.marks.filter((mark) => mark.text !== undefined);
-    // Observe drawing changes only while callouts need to follow them.
     this.observer.disconnect();
     if (marks.length > 0) {
       this.observer.observe(this.canvas, { childList: true, subtree: true, attributes: true });

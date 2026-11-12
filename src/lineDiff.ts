@@ -1,20 +1,12 @@
-// The lines that changed between two versions of a source, as a unified diff, which models read
-// well, to tell a model what the user changed of a diagram.
+// Unified diffs, which models read well, of what the user changed in a diagram.
 
-/** Lines of context around each change, enough to find it in the source. */
 const CONTEXT = 1;
-/**
- * The most pairs of changed lines compared, beyond the lines that the versions start and end with
- * alike: more take long to compare, and are a rewrite rather than an edit.
- */
+// Pairs of changed lines; more are slow to compare, and a rewrite rather than an edit.
 const MAX_COMPARED = 1_000_000;
 
 type Line = { kind: " " | "-" | "+"; text: string };
 
-/**
- * The changes from `before` to `after` as the hunks of a unified diff, with a line of context and
- * no file headers, or undefined if they are too many to compare. Empty if the lines are the same.
- */
+// Hunks without file headers; undefined if too many lines to compare.
 export function lineDiff(before: string, after: string): string | undefined {
   if (before === after) return "";
   const a = before.split("\n");
@@ -41,10 +33,9 @@ export function lineDiff(before: string, after: string): string | undefined {
   return hunks(lines, offset).join("\n");
 }
 
-/** The lines of a shortest edit from `a` to `b`, by their longest common subsequence. */
 function changes(a: readonly string[], b: readonly string[]): Line[] {
   const width = b.length + 1;
-  // The length of the longest common subsequence of a[i..] and b[j..], at i * width + j.
+  // LCS length of a[i..] and b[j..] at i * width + j.
   const common = new Uint32Array((a.length + 1) * width);
   for (let i = a.length - 1; i >= 0; i--) {
     for (let j = b.length - 1; j >= 0; j--) {
@@ -74,15 +65,13 @@ function changes(a: readonly string[], b: readonly string[]): Line[] {
   return lines;
 }
 
-/** The hunks of changed lines with their context, each headed by where it is in either version. */
 function hunks(lines: readonly Line[], offset: number): string[] {
   const changed: number[] = [];
   for (const [index, line] of lines.entries()) {
     if (line.kind !== " ") changed.push(index);
   }
   const result: string[] = [];
-  // The lines of either version before the hunk, counted on from the hunk before, as counting
-  // them anew for each hunk would take long for many hunks in a long source.
+  // Counted on from the previous hunk, to stay linear.
   let counted = 0;
   let oldBefore = offset;
   let newBefore = offset;

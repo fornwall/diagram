@@ -1,30 +1,25 @@
-// Find fenced code blocks as CommonMark does, also in block quotes and list items, to collect
-// diagrams from chat replies and to open Markdown diagrams and write them back.
+// Finds fenced code blocks as CommonMark does, also in block quotes and list items.
 
 import type { TextDocument } from "vscode";
 import type { DiagramBlock } from "./blocks";
 import { type DiagramLanguage, isDiagramLanguage, isPlainObject } from "./protocol";
 
-/** CommonMark measures indentation in columns, with tab stops every 4 columns. */
 const TAB_STOP = 4;
 
-/** A position in a line, in characters and in columns. */
 class Cursor {
   index = 0;
   column = 0;
-  /** Whether part of the tab at index was consumed, e.g. as the optional space after ">". */
+  // Part of the tab at index was consumed, as the optional space after ">".
   private split = false;
 
   constructor(readonly line: string) {}
 
-  /** The index of the first character at or after the cursor that is not a space or tab. */
   nonspace(): number {
     let index = this.index;
     while (this.line[index] === " " || this.line[index] === "\t") index++;
     return index;
   }
 
-  /** The columns of spaces and tabs ahead of the cursor. */
   indent(): number {
     let column = this.column;
     for (let index = this.index; ; index++) {
@@ -35,7 +30,6 @@ class Cursor {
     }
   }
 
-  /** Consumes spaces and tabs for up to this many columns, splitting a tab that spans the end. */
   skip(columns: number): void {
     const end = this.column + columns;
     while (this.column < end) {
@@ -59,13 +53,11 @@ class Cursor {
     }
   }
 
-  /** Consumes marker characters. */
   advance(chars = 1): void {
     this.index += chars;
     this.column += chars;
   }
 
-  /** The text after the cursor, where the rest of a split tab becomes spaces. */
   rest(): string {
     return this.split
       ? " ".repeat(TAB_STOP - (this.column % TAB_STOP)) + this.line.slice(this.index + 1)
@@ -73,32 +65,26 @@ class Cursor {
   }
 }
 
-/** An opening code fence: its marker, the diagram language it names, if any, and its indent. */
 interface OpeningFence {
   fence: string;
   language: DiagramLanguage | undefined;
-  /** Columns from the start of the fence's container, which are removed from its content lines. */
+  // Removed from content lines.
   indent: number;
 }
 
-/** Which diagram language, if any, a fence names, given its marker as {@link fenceMarker} reads it. */
 type LanguageOf = (marker: FenceMarker) => DiagramLanguage | undefined;
 
-/** As in chat, where VS Code draws mermaid fences alone, and in CommonMark. */
+// VS Code's chat draws only mermaid fences.
 const chatLanguage: LanguageOf = ({ fence, language }) =>
   isDiagramLanguage(language) && (language === "mermaid" || !fence.startsWith(":"))
     ? language
     : undefined;
 
-/**
- * How Markdown documents name languages: VS Code's preview draws a fence as Mermaid if its language
- * contains a word of the markdown-mermaid.languages setting, given here, and draws a ::: mermaid
- * container whatever the setting. It trims any whitespace, such as a no-break space, from the info
- * string, and a container's first word ends at a space alone.
- */
+// VS Code's preview draws a fence whose language contains a word of markdown-mermaid.languages,
+// and any ::: mermaid container. It trims any whitespace, such as a no-break space, from the info
+// string, and a container's first word ends at a space alone.
 function documentLanguages(words: readonly string[]): {
   languageOf: LanguageOf;
-  /** Whether a document may name a diagram language, without which it holds no diagram. */
   mayName: RegExp;
 } {
   const escaped = words.map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
@@ -121,24 +107,19 @@ function documentLanguages(words: readonly string[]): {
 
 let documents = documentLanguages(["mermaid"]);
 
-/** Takes the words of the markdown-mermaid.languages setting, for documents read from now on. */
 export function setMermaidLanguages(words: readonly string[]): void {
   documents = documentLanguages(words);
   documentFences = new WeakMap();
 }
 
-/** A fence marker, the first word of its info string in lower case, and the info string. */
 interface FenceMarker {
   fence: string;
   language: string;
   info: string;
 }
 
-/**
- * Parses a fence marker at the start of text, comparing languages in lower case as VS Code's
- * preview and GitHub do. The marker may also be ":::", which opens a block only as a mermaid
- * container.
- */
+// In lower case, as VS Code's preview and GitHub compare languages. ":::" opens only a mermaid
+// container.
 function fenceMarker(text: string): FenceMarker | undefined {
   // Unicode line separators are not line endings in Markdown, so "." must match them.
   const match = /^(`{3,}|~{3,}|:{3,})(.*)$/s.exec(text);
@@ -146,16 +127,14 @@ function fenceMarker(text: string): FenceMarker | undefined {
     return undefined;
   }
   const [, fence = "", info = ""] = match;
-  // The info string of a backtick fence may not contain backticks, e.g. ```mermaid``` inline.
+  // As in ```mermaid``` inline.
   if (fence.startsWith("`") && info.includes("`")) {
     return undefined;
   }
-  // As CommonMark has it, the info string is trimmed of spaces and tabs only: a no-break space
-  // before a word leaves no language. The word ends at any whitespace.
+  // CommonMark trims spaces and tabs only: a no-break space before a word leaves no language.
   return { fence, language: /^[ \t]*(\S*)/.exec(info)?.[1]?.toLowerCase() ?? "", info };
 }
 
-/** Parses the fence marker at `start`, which is preceded by `indent` columns of indentation. */
 function opening(
   line: string,
   start: number,
@@ -167,16 +146,14 @@ function opening(
     return undefined;
   }
   const language = languageOf(marker);
-  // VS Code's preview, as Azure DevOps wikis, draws a ::: mermaid container as a diagram, and other
-  // containers as text.
+  // As in Azure DevOps wikis.
   return language || !marker.fence.startsWith(":")
     ? { fence: marker.fence, language, indent }
     : undefined;
 }
 
-/** Whether the text at `start` closes a block: the fence's character, as many or more, then spaces. */
 function closes(line: string, start: number, fence: string): boolean {
-  // Most lines are source, sometimes megabytes of chart data: stop at the first other character.
+  // Lines may be megabytes of chart data: stop at the first other character.
   let index = start;
   while (line[index] === fence[0]) index++;
   if (index - start < fence.length) {
@@ -188,29 +165,25 @@ function closes(line: string, start: number, fence: string): boolean {
   return true;
 }
 
-/** Parses a line of a model's reply that opens a code block outside block quotes and lists. */
 export function openingFence(line: string): OpeningFence | undefined {
   const cursor = new Cursor(line);
   const indent = cursor.indent();
   return indent < 4 ? opening(line, cursor.nonspace(), indent, chatLanguage) : undefined;
 }
 
-/** Whether a line outside block quotes and lists closes the block that the opening fence opened. */
 export function isClosingFence(line: string, { fence }: Pick<OpeningFence, "fence">): boolean {
   const cursor = new Cursor(line);
   return cursor.indent() < 4 && closes(line, cursor.nonspace(), fence);
 }
 
-/** A block quote, or a list item whose content starts `width` columns into its container's. */
 type Container = ">" | ListItem;
 
 interface ListItem {
   width: number;
-  /** Whether it started with a blank line and holds nothing yet. */
+  // Started with a blank line and holds nothing yet.
   empty: boolean;
 }
 
-/** Consumes a block quote marker after `indent` columns, and the optional space after it. */
 function quote(cursor: Cursor, indent: number): void {
   cursor.skip(indent);
   cursor.advance();
@@ -220,10 +193,8 @@ function quote(cursor: Cursor, indent: number): void {
   }
 }
 
-/**
- * Consumes a line's continuation of a container: ">" or a list item's indentation. Unlike CommonMark
- * and VS Code's chat, VS Code's preview continues a block quote at a ">" indented 4 columns or more.
- */
+// Unlike CommonMark and VS Code's chat, the preview continues a block quote at a ">" indented 4
+// columns or more.
 function continues(cursor: Cursor, container: Container, preview: boolean): boolean {
   const indent = cursor.indent();
   if (container === ">") {
@@ -245,7 +216,6 @@ function continues(cursor: Cursor, container: Container, preview: boolean): bool
   return true;
 }
 
-/** Consumes the containers that a line continues, returning how many it continues. */
 function continued(cursor: Cursor, containers: readonly Container[], preview: boolean): number {
   let matched = 0;
   while (
@@ -257,12 +227,8 @@ function continued(cursor: Cursor, containers: readonly Container[], preview: bo
   return matched;
 }
 
-/**
- * Turns the container markers in front of an opening fence at `end` into what the lines below
- * start with: list markers become spaces, and each ">" gets a space after it, so that a line that
- * starts with a space does not lose it to the marker. Tabs after such an added space become spaces
- * to keep their width.
- */
+// List markers become spaces, and each ">" gets a space so that content does not lose its first
+// space to the marker. Tabs after it become spaces to keep their width.
 function continuationPrefix(line: string, end: number): string {
   let prefix = "";
   let column = 0;
@@ -289,11 +255,8 @@ function continuationPrefix(line: string, end: number): string {
   return prefix;
 }
 
-/** How a line takes part in fenced code blocks. */
 type FenceLine =
-  // The prefix is what the block's content lines start with.
   | { kind: "opening"; fence: OpeningFence; prefix: string }
-  // The text is the line without its container markers and fence indentation.
   | { kind: "content"; text: string }
   | { kind: "closing" }
   | { kind: "other" };
@@ -309,10 +272,8 @@ const BLOCK_TAGS =
   "hr|html|iframe|legend|li|link|main|menu|menuitem|nav|noframes|ol|optgroup|option|p|param|" +
   "search|section|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul";
 const ATTRIBUTE = `\\s+[A-Za-z_:][\\w.:-]*(?:\\s*=\\s*(?:[^"'=<>\`\\s]+|'[^']*'|"[^"]*"))?`;
-/** An HTML block: how it starts, what ends it, and whether it interrupts a paragraph. */
 type HtmlBlock = [start: RegExp, end: RegExp | "blank line", interrupts: boolean];
 
-/** The HTML blocks, where a declaration such as "<!DOCTYPE html>" starts as given. */
 const htmlBlocks = (declaration: RegExp): HtmlBlock[] => [
   [/^<(?:script|pre|style|textarea)(?=[\s>]|$)/i, /<\/(?:script|pre|style|textarea)>/i, true],
   [/^<!--/, /-->/, true],
@@ -328,28 +289,19 @@ const htmlBlocks = (declaration: RegExp): HtmlBlock[] => [
     false,
   ],
 ];
-/** In CommonMark and VS Code's chat, a declaration starts with "<!" and a letter. */
 const CHAT_HTML_BLOCKS = htmlBlocks(/^<![A-Za-z]/);
-/** VS Code's preview, with markdown-it, takes only an upper-case letter, as CommonMark 0.30 did. */
+// markdown-it takes only an upper-case letter, as CommonMark 0.30 did.
 const PREVIEW_HTML_BLOCKS = htmlBlocks(/^<![A-Z]/);
 
-/**
- * How many block quotes and list items deep a line is read for more of them. VS Code's preview
- * renders no blocks that deep. The bound keeps a line of many markers, such as "- - - x", from
- * costing each line after it a step per container, and from being scanned to its end per marker.
- */
+// The preview renders nothing that deep. Bounds the cost of lines such as "- - - x".
 const MAX_DEPTH = 100;
 
-/** Whether a sticky regex matches a line at an index, after which its lastIndex is the match's end. */
 function matchesAt(regex: RegExp, line: string, index: number): boolean {
   regex.lastIndex = index;
   return regex.test(line);
 }
 
-/**
- * Where the end of a line made of one of "-", "*" and "_", and spaces and tabs, starts: a thematic
- * break can start there or after, and nowhere before.
- */
+// Where a thematic break may start, at the earliest.
 function thematicBreakTail(line: string): number {
   let index = line.length;
   let char: string | undefined;
@@ -362,59 +314,43 @@ function thematicBreakTail(line: string): number {
   return index;
 }
 
-/**
- * Follows the block structure of Markdown line by line, as far as it decides where fenced code
- * blocks are: in block quotes and list items, but not in indented code, HTML or a paragraph. A
- * line that ends a container also ends a code block in it.
- */
+// Follows Markdown block structure as far as it decides where fenced code blocks are.
 class FenceScanner {
   private readonly containers: Container[] = [];
-  /** Whether the innermost container ends with a paragraph, which lines may continue lazily. */
+  // Lines may continue a paragraph lazily.
   private paragraph = false;
-  /** The open code block, in the innermost container. */
   private code: OpeningFence | undefined;
-  /** What ends the open HTML block. */
   private html: RegExp | "blank line" | undefined;
 
-  /**
-   * Reads lines of a model's reply as VS Code's chat does, unless given how a document's fences
-   * name languages and to read block quotes as VS Code's Markdown preview does.
-   */
+  // As VS Code's chat reads them, unless reading a document as the preview does.
   constructor(
     private readonly languageOf = chatLanguage,
     private readonly preview = false,
   ) {}
 
-  /** Whether the lines so far end inside a code block. */
   get inCode(): boolean {
     return this.code !== undefined;
   }
 
-  /**
-   * Whether a line that starts with this text is sure to belong to the open code block, as its
-   * content or closing fence, rather than end it by leaving the block's block quote or list item.
-   */
+  // Whether a line starting with this surely stays in the code block's containers.
   continuesCode(start: string): boolean {
     const { containers } = this;
     if (containers.length === 0) {
       return true;
     }
     const cursor = new Cursor(start);
-    // Until a line has more than indentation, it may yet turn out to be blank or less indented.
     return (
       continued(cursor, containers, this.preview) === containers.length &&
       cursor.nonspace() < start.length
     );
   }
 
-  /** Reads the next line, without its line break. */
   next(text: string): FenceLine {
     const line = text.endsWith("\r") ? text.slice(0, -1) : text;
     const cursor = new Cursor(line);
     const { containers } = this;
     const matched = continued(cursor, containers, this.preview);
     if (cursor.nonspace() < line.length) {
-      // A list item that started with a blank line holds something now.
       for (const container of containers.slice(0, matched)) {
         if (container !== ">") container.empty = false;
       }
@@ -441,15 +377,12 @@ class FenceScanner {
       if (all && cursor.nonspace() < line.length) {
         return OTHER;
       }
-      // A blank line, or a line that does not continue its containers, ends it.
       this.html = undefined;
     }
 
-    // Container markers, then at most one leaf block. A block that starts on the line closes the
-    // containers that the line does not continue, and new containers take their place.
+    // Container markers, then at most one leaf block, which closes containers not continued.
     let depth = matched;
     let leaf = false;
-    // A line of list markers would otherwise be scanned to its end for a thematic break per marker.
     let tail: number | undefined;
     for (;;) {
       const indent = cursor.indent();
@@ -503,16 +436,14 @@ class FenceScanner {
       let end = at + marker.length;
       while (line[end] === " " || line[end] === "\t") end++;
       const empty = end === line.length;
-      // A list item interrupts a paragraph only with content, and an ordered one only from 1
-      // (5.2, example 285, and 5.3, example 304). Otherwise the paragraph continues.
+      // Only with content, and an ordered one only from 1 (examples 285, 304).
       const ordered = marker.length > 1;
       if (this.paragraph && all && (empty || (ordered && Number.parseInt(marker, 10) !== 1))) {
         break;
       }
       cursor.skip(indent);
       cursor.advance(marker.length);
-      // Content indented by 5 or more columns is indented code, 1 column into the item (5.2,
-      // example 273).
+      // 5 or more columns is indented code, 1 column into the item (example 273).
       const spaces = cursor.indent();
       const padding = empty || spaces > 4 ? 1 : spaces;
       cursor.skip(padding);
@@ -532,10 +463,7 @@ class FenceScanner {
   }
 }
 
-/**
- * Joins the lines of a code block without the blank lines around them, which, as in Markdown, hold
- * only spaces and tabs: a no-break space is content.
- */
+// Blank lines hold only spaces and tabs: a no-break space is content.
 export function trimBlankLines(lines: readonly string[]): string {
   const first = lines.findIndex(isContent);
   return first === -1 ? "" : lines.slice(first, lines.findLastIndex(isContent) + 1).join("\n");
@@ -545,16 +473,12 @@ function isContent(line: string): boolean {
   return !/^[ \t]*$/.test(line);
 }
 
-/** A Markdown diagram with zero-based line positions for write-back. */
+// Lines are zero-based.
 export interface DiagramFence extends DiagramBlock {
-  /** The line the opening fence marker is on; the content starts on the line after it. */
   openingLine: number;
-  /** The last line of the content, which runs to the end of the text in a block that is never closed. */
+  // Of the content, or the end of the text for an unclosed block.
   lastLine: number;
-  /**
-   * What the content lines start with: the markers of the block quotes the block is in, the
-   * indentation of the list items it is in, and the indentation of its opening fence.
-   */
+  // Block quote markers and indentation of content lines.
   prefix: string;
 }
 
@@ -563,19 +487,17 @@ let documentFences = new WeakMap<
   { version: number; fences: readonly DiagramFence[] }
 >();
 
-/** Share a scan between CodeLens, opening and write-back; edits invalidate it immediately. */
+// Shared between CodeLens, opening and write-back.
 export function findDocumentDiagramFences(
   document: Pick<TextDocument, "version" | "getText">,
 ): readonly DiagramFence[] {
   const cached = documentFences.get(document);
   if (cached?.version === document.version) return cached.fences;
   const fences = findDiagramFences(document.getText());
-  // Weak keys let closed documents and their potentially large diagram sources be collected.
   documentFences.set(document, { version: document.version, fences });
   return fences;
 }
 
-/** A diagram block in a document, with its content lines, which may all be blank. */
 interface CodeBlock {
   language: DiagramLanguage;
   prefix: string;
@@ -584,20 +506,15 @@ interface CodeBlock {
   lines: string[];
 }
 
-/**
- * YAML front matter, as VS Code's Markdown preview hides it: from a first line of "---" to the next
- * line of "---", each followed by whitespace only. Without that closing line there is none.
- */
+// As the preview hides it; none without the closing "---".
 const FRONT_MATTER = /^---[^\S\n]*\n(?:[^\n]*\n)*?---[^\S\n]*(?:\n|$)/;
 
-/** Yields the diagram blocks in a document in order. */
 function* diagramBlocks(text: string): Generator<CodeBlock> {
   const scanner = new FenceScanner(documents.languageOf, true);
   let open: CodeBlock | undefined;
   // A fence in front matter is YAML, not a code block.
   const frontMatter = FRONT_MATTER.exec(text)?.[0] ?? "";
-  // Lines end at LF, as in VS Code, whose documents hold no lone CR, and not at Unicode separators.
-  // A final line break ends the last line rather than starting another one.
+  // VS Code documents hold no lone CR. Unicode separators end no lines.
   let line = frontMatter.split("\n").length - 1;
   for (let start = frontMatter.length; start < text.length; line++) {
     const newline = text.indexOf("\n", start);
@@ -625,7 +542,6 @@ function* diagramBlocks(text: string): Generator<CodeBlock> {
   }
 }
 
-/** Find nonempty diagram blocks in document order, skipping fences inside other code blocks. */
 export function findDiagramFences(text: string): DiagramFence[] {
   const fences: DiagramFence[] = [];
   // CodeLens scans every Markdown document on each edit, and most name no diagram language.
@@ -641,16 +557,13 @@ export function findDiagramFences(text: string): DiagramFence[] {
   return fences;
 }
 
-/** A replacement of a block's content lines that reads back as the source that was written. */
 interface FenceRewrite {
   start: number;
   end: number;
   text: string;
-  /** The block as it is after the replacement. */
   fence: DiagramFence;
 }
 
-/** The block of a language in `text` that opens at a line. */
 function blockAt(
   text: string,
   language: DiagramLanguage,
@@ -664,7 +577,6 @@ function blockAt(
   return undefined;
 }
 
-/** The offset at which a line starts, counting lines from the one at `from`. */
 function lineOffset(text: string, lines: number, from = 0): number {
   let offset = from;
   for (let line = 0; line < lines; line++) {
@@ -677,12 +589,8 @@ function lineOffset(text: string, lines: number, from = 0): number {
   return offset;
 }
 
-/**
- * Replaces the source of a block found in `text` with `source`, which has no blank lines around
- * it, writing every line behind the block's prefix. The blank lines around the old source are
- * kept, as the user laid them out. Returns the zero-based source line that would end the block
- * early, or undefined if the block would not read back as the source for another reason.
- */
+// Keeps the blank lines around the old source. Returns the source line that would end the block
+// early, or undefined if it would not read back as the source for another reason.
 export function rewriteFence(
   text: string,
   fence: DiagramFence,
@@ -694,16 +602,14 @@ export function rewriteFence(
   if (read?.lastLine !== fence.lastLine) {
     return undefined;
   }
-  // The lines from the first to the last line of the old source.
   const first = openingLine + 1 + read.lines.findIndex(isContent);
   const last = openingLine + 1 + read.lines.findLastIndex(isContent);
   const start = lineOffset(text, first);
   const end = lineOffset(text, last + 1 - first, start);
-  // Empty lines carry the prefix up to its last marker: a quoted empty line still needs its ">".
+  // A quoted empty line still needs its ">".
   const empty = fence.prefix.trimEnd();
   const lines = source.split("\n");
   const replacement = lines.map((line) => (line ? fence.prefix + line : empty)).join(eol);
-  // The old source's last line, which is not empty, has no line break to keep at the end of the text.
   const replaced = text[end - 1] === "\n" ? replacement + eol : replacement;
   const written = text.slice(0, start) + replaced + text.slice(end);
   const lastLine = fence.lastLine + lines.length - (last + 1 - first);
@@ -722,7 +628,6 @@ export function rewriteFence(
   };
 }
 
-/** The diagram block holding no diagram that a line is in, from its opening to its closing fence. */
 export function emptyDiagramBlockAt(
   text: string,
   line: number,
@@ -738,18 +643,14 @@ export function emptyDiagramBlockAt(
   return undefined;
 }
 
-/** Open the enclosing fence, the next below the cursor, or the last in the document. */
+// The enclosing fence, the next below, or the last.
 export function fenceAt(fences: readonly DiagramFence[], line: number): DiagramFence | undefined {
   const inside = fences.find((fence) => line >= fence.openingLine && line <= fence.lastLine + 1);
   return inside ?? fences.find((fence) => fence.openingLine > line) ?? fences.at(-1);
 }
 
-/**
- * Finds an unchanged block at its original line or, if no block of its language or source is
- * there, a unique matching block that moved. A block at that line in its language or with its
- * source is taken to be it, edited, which must be reopened before writing, as must ambiguous
- * copies, to avoid replacing another diagram that happens to have the same source.
- */
+// At its line, else a unique match that moved. A block there in its language or with its source
+// is taken to be it, edited. Ambiguous copies must be reopened, so as not to replace another.
 export function relocateFence(
   fences: readonly DiagramFence[],
   read: DiagramFence,
@@ -768,7 +669,7 @@ export function relocateFence(
   return found.length === 1 ? found[0] : undefined;
 }
 
-/** Validate command arguments, which can also come from other extensions. */
+// Command arguments can come from other extensions.
 export function isDiagramFence(value: unknown): value is DiagramFence {
   return (
     isPlainObject(value) &&

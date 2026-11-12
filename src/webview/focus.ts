@@ -1,9 +1,5 @@
-// Recover focus after VS Code refocuses the webview or a focused control disappears.
-
-/**
- * Restore the last focused element when possible, otherwise focus the content. Renderers handle
- * focus within the canvas themselves because they replace its elements when drawing.
- */
+// Restores focus after VS Code refocuses the webview or a focused control disappears.
+// Renderers handle focus within the canvas, as they replace its elements when drawing.
 export function keepFocusInContent(canvas: HTMLElement, focusContent: () => void): void {
   // VS Code briefly blurs the webview before focusing its body (WebviewElement._doFocus).
   let lastFocused: HTMLElement | SVGElement | undefined;
@@ -17,8 +13,7 @@ export function keepFocusInContent(canvas: HTMLElement, focusContent: () => void
     if (document.activeElement === document.body) focusContent();
   });
 
-  // Wait for DOM updates before deciding whether a control disappeared. Do not steal focus
-  // from another element or another part of VS Code.
+  // Wait for DOM updates; do not steal focus from elsewhere in VS Code.
   document.addEventListener("focusout", ({ target, relatedTarget }) => {
     if (relatedTarget || !(target instanceof HTMLElement) || canvas.contains(target)) return;
     queueMicrotask(() => {

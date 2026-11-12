@@ -15,7 +15,7 @@ import { type LabelRepair, RepairableMermaidError, repairLabel } from "./mermaid
 
 export { parsableSource } from "../mermaidSyntax";
 
-/** The words that start each kind of diagram that Mermaid detects, the common ones first. */
+// Most common first.
 export const DIAGRAM_TYPES = [
   "flowchart",
   "graph",
@@ -63,7 +63,7 @@ export const DIAGRAM_TYPES = [
 
 const COMMON_TYPES = joinWords(DIAGRAM_TYPES.slice(0, 11), "or");
 
-/** The first statements of diagrams without a type, and the type line that they need. */
+// First statements of untyped diagrams, and the type line they need.
 const STATEMENTS: [RegExp, string][] = [
   [/^\s*\[\*\]\s*-->/, "stateDiagram-v2"],
   [/<?<?-?->>|-[x)]\s*\w/, "sequenceDiagram"],
@@ -72,7 +72,7 @@ const STATEMENTS: [RegExp, string][] = [
   [/-->|---|==>|-\.->|^\s*[\w-]+\s*(?:\[|\(|\{)/, "flowchart TD"],
 ];
 
-/** Replaces Mermaid's error for an unknown diagram type, which quotes the whole source. */
+// Mermaid's own error quotes the whole source.
 function unknownTypeError(message: string): Error {
   // Mermaid quotes the source without front matter, directives and comments.
   const text = /for text: (.*)$/s.exec(message)?.[1]?.trim() ?? "";
@@ -97,7 +97,7 @@ function unknownTypeError(message: string): Error {
       'ZenUML needs a plugin that the panel does not load: draw it as a "sequenceDiagram" instead.',
     );
   }
-  // The source starts with a statement, as a model that leaves out the type writes it.
+  // As models write it when leaving out the type.
   const statement = text.split("\n", 1)[0] ?? "";
   const missing = STATEMENTS.find(([pattern]) => pattern.test(statement))?.[1];
   if (missing) {
@@ -120,17 +120,14 @@ function unknownTypeError(message: string): Error {
   );
 }
 
-/** The text that Mermaid parses, with the offset in the source of each of its characters. */
+// With the source offset of each character.
 interface ParsedText {
   text: string;
   origins: number[];
 }
 
-/**
- * Replaces each match in the text, as Mermaid does before parsing, keeping track of where each
- * character comes from: a replacement's characters in common with the start or end of the match
- * come from those of the match, the others from where the match differs.
- */
+// Replaces as Mermaid does, tracking origins: the common prefix and suffix map to the match, the
+// rest to where it differs.
 function edit(
   { text, origins }: ParsedText,
   pattern: RegExp,
@@ -169,12 +166,7 @@ function edit(
   return edited;
 }
 
-/**
- * The text that Mermaid parses for a diagram of the type, from the source with normalized line
- * breaks: without front matter and directives, and usually without comment lines and leading
- * whitespace (see preprocessDiagram and Diagram.fromText in Mermaid), with entities encoded, and as
- * the diagram's parser changes it.
- */
+// As Mermaid preprocesses it (see preprocessDiagram and Diagram.fromText).
 function parsedText(normalized: string, type: string): ParsedText {
   const start = frontMatterEnd(normalized);
   let parsed: ParsedText = {
@@ -209,42 +201,37 @@ function parsedText(normalized: string, type: string): ParsedText {
   return parsed;
 }
 
-/** The offsets at which the lines of the text start. */
 function lineStarts(text: string): number[] {
   const starts = [0];
   for (let i = text.indexOf("\n"); i >= 0; i = text.indexOf("\n", i + 1)) starts.push(i + 1);
   return starts;
 }
 
-/** A Jison parser's error details (see parseError in the parsers that Jison generates). */
+// See parseError in Jison-generated parsers.
 interface JisonHash {
-  /** The text of the token that the parser did not expect, or of none for a lexer error. */
+  // Empty for a lexer error.
   text: string;
   token: string | null;
-  /** The line of the token, from 0. */
+  // From 0.
   line: number;
-  /** Where the token before it is, from line 1 and column 0. */
+  // Of the token before, from line 1 and column 0.
   loc?: { first_line: number; first_column: number; last_line: number; last_column: number };
   expected?: string[];
 }
 
-/** The errors of the parsers that Mermaid generates with Langium, as @mermaid-js/parser reports them. */
 interface LangiumResult {
   lexerErrors: { offset: number; length: number }[];
   parserErrors: { message: string; token: { startOffset: number; endOffset: number } }[];
 }
 
-/** A problem with a span of the parsed text. */
 interface Problem {
   start: number;
   end: number;
-  /** What the parser expected instead. */
   expected?: string[] | undefined;
-  /** A message other than the default "unexpected …". */
+  // Instead of the default "unexpected …".
   message?: string;
 }
 
-/** The tokens that a Langium parser error says it expected. */
 function langiumExpected(message: string): string[] {
   // "Expecting token of type 'EOF' but found …", or token sequences listed as "[A, B]".
   const single = /^Expecting token of type '(.+?)'/.exec(message)?.[1];
@@ -253,9 +240,9 @@ function langiumExpected(message: string): string[] {
     : [...new Set(Array.from(message.matchAll(/\[([^\],\]]+)/g), (match) => match[1] as string))];
 }
 
-/** Where a Jison lexer stopped, on the line from 0, from the excerpt its error message shows. */
+// From the excerpt in a Jison lexer's message.
 function lexerErrorOffset(message: string, line: number, parsed: string): number | undefined {
-  // The excerpt shows the 20 characters before the position, without line breaks, and a caret.
+  // The 20 characters before the position, without line breaks, then a caret.
   const excerpt = /\n(.*)\n(-*)\^$/.exec(message);
   if (!excerpt) return undefined;
   const before = (excerpt[1] as string)
@@ -275,7 +262,7 @@ function lexerErrorOffset(message: string, line: number, parsed: string): number
   return undefined;
 }
 
-/** The problems that a Mermaid parser's error reports, in the parsed text. */
+// In the parsed text.
 function problemsOf(error: Error, parsed: string, frontMatterLines: number): Problem[] {
   const { result } = error as { result?: LangiumResult };
   if (result?.lexerErrors && result.parserErrors) {
@@ -289,15 +276,14 @@ function problemsOf(error: Error, parsed: string, frontMatterLines: number): Pro
       })),
     ];
   }
-  // Use case diagrams give offsets in their message, which their parser adds to Chevrotain's (see
-  // usecase.chevrotain.ts in Mermaid), and the line and column of invalid JSON data.
+  // Use case diagrams put offsets in the message (usecase.chevrotain.ts), and JSON line/column.
   const { line, column } = error as { line?: unknown; column?: unknown };
   if (error.name === "UsecaseJsonError" && typeof line === "number" && typeof column === "number") {
     const start = Math.min(
       (lineStarts(parsed)[line - 1] ?? parsed.length) + column - 1,
       parsed.length,
     );
-    // Leave out where in the JSON it failed, which the position in the diagram says better.
+    // The diagram position says it better.
     const message = error.message
       .replace(/ \(line \d+, column \d+\)$/, "")
       .replace(/ at position \d+(?: \(line \d+ column \d+\))?/, "");
@@ -317,7 +303,7 @@ function problemsOf(error: Error, parsed: string, frontMatterLines: number): Pro
     ];
   }
   const { hash } = error as { hash?: JisonHash };
-  // Some of Mermaid's checks of what it parsed make up the details of a parser's error.
+  // Some of Mermaid's own checks fake parser error details.
   if (!hash || (hash.token !== null && !/^(?:Parse|Lexical) error/.test(error.message))) return [];
   const starts = lineStarts(parsed);
   const offset = (line: number, column: number) =>
@@ -330,7 +316,7 @@ function problemsOf(error: Error, parsed: string, frontMatterLines: number): Pro
   }
   const { first_line, first_column, last_line, last_column } = hash.loc;
   if (hash.token === null) {
-    // Agent flows report errors in node metadata as Jison would, in lines after the front matter.
+    // Agent flow metadata errors, in lines after the front matter.
     return [
       {
         start: offset(first_line - frontMatterLines, first_column),
@@ -339,7 +325,7 @@ function problemsOf(error: Error, parsed: string, frontMatterLines: number): Pro
       },
     ];
   }
-  // The location is that of the last token the parser accepted: the unexpected one is next.
+  // The location is the last accepted token; the unexpected one is next.
   const after = offset(last_line, last_column);
   const found = hash.text ? parsed.indexOf(hash.text, after) : -1;
   const start =
@@ -353,7 +339,6 @@ function problemsOf(error: Error, parsed: string, frontMatterLines: number): Pro
   ];
 }
 
-/** What the parsers call the tokens that they expect, in words. */
 const TOKEN_WORDS = new Map([
   ["EOF", "end of the diagram"],
   ["NEWLINE", "end of line"],
@@ -373,13 +358,12 @@ const TOKEN_WORDS = new Map([
   ["BAR", '"bar"'],
 ]);
 
-/** Describes a problem with a span of the source. */
 function describe(source: string, start: number, end: number, expected?: string[]): string {
   const span = source.slice(start, end).split("\n", 1)[0] as string;
   const text = span.trim();
   let found = quote(text, 30);
   if (!text) {
-    // Spaces at the end of a line, or of the diagram, are not what the parser stopped at.
+    // Trailing spaces aren't what the parser stopped at.
     const rest = source.slice(start);
     found = !rest.trim()
       ? "end of the diagram"
@@ -389,14 +373,14 @@ function describe(source: string, start: number, end: number, expected?: string[
           : "space"
         : "end of line";
   }
-  // A longer list is of every kind of statement, which does not help.
+  // A longer list is every kind of statement, which doesn't help.
   const names = [...new Set(expected?.map((name) => TOKEN_WORDS.get(name) ?? name))];
   const instead =
     names.length > 0 && names.length <= 8 ? `; expected ${joinWords(names, "or")}` : "";
   return `unexpected ${found}${instead}.`;
 }
 
-/** Describes an error of js-yaml, in Mermaid's front matter or a node's metadata. */
+// js-yaml errors in front matter or node metadata.
 function yamlError(
   error: Error & { reason?: string },
   { buffer = "", position: at }: { buffer?: string; position: number },
@@ -418,7 +402,6 @@ function yamlError(
   return new Error(`Invalid YAML in ${where} on line ${line}, column ${column}: ${reason}.`);
 }
 
-/** Makes Mermaid's error clear, at its position in the source. */
 export function describeError(error: unknown, source: string, type: () => string): unknown {
   if (!(error instanceof Error)) {
     return error;
@@ -431,7 +414,7 @@ export function describeError(error: unknown, source: string, type: () => string
   if (error.name === "YAMLException" && mark) {
     return yamlError(error, mark, normalized);
   }
-  // Mermaid loads the image of an image shape to lay it out, which only a data: URL lets the panel.
+  // Mermaid loads image shapes to lay them out; the panel only allows data: URLs.
   if (error.name === "EncodingError") {
     const url = Array.from(
       normalized.matchAll(/\bimg:\s*["']?([^\s"',}]+)/g),
@@ -475,13 +458,13 @@ export function describeError(error: unknown, source: string, type: () => string
             repair = edit;
           })
         : undefined;
-    // A hint says what to write better than the names of the tokens that the parser expected.
+    // A hint beats the names of expected tokens.
     const message = problem.message
       ? `Error on line ${line}, column ${column}: ${problem.message}`
       : `Parse error on line ${line}, column ${column}: ${describe(normalized, start, end, hint ? undefined : expected)}${hint ? ` ${hint}` : ""}`;
     return { line, column, message, repair };
   });
-  // The first problem on each line: the others are usually its consequences.
+  // The first problem per line: the others are usually its consequences.
   const messages = problems
     .sort((a, b) => a.line - b.line || a.column - b.column)
     .filter((problem, i) => problems[i - 1]?.line !== problem.line)
@@ -494,27 +477,21 @@ export function describeError(error: unknown, source: string, type: () => string
       : (unplacedError(error.message, normalized) ?? error);
 }
 
-/** A pattern for the text as a word of its own. */
 const word = (text: string) => `(?<![\\w-])${RegExp.escape(text)}(?![\\w-])`;
 
-/** The offset of the first match of the pattern in the source, after the front matter. */
+// After the front matter.
 function find(normalized: string, pattern: string): number | undefined {
   const start = frontMatterEnd(normalized);
   const found = new RegExp(pattern, "m").exec(normalized.slice(start));
   return found ? start + found.index : undefined;
 }
 
-/** The error, on the line of the offset in the source if there is one. */
 const errorAt = (normalized: string, at: number | undefined, message: string) =>
   new Error(
     at === undefined ? message : `Error on line ${lineAndColumn(normalized, at).line}: ${message}`,
   );
 
-/**
- * The error for a color of the theme variables that Mermaid's themes cannot read, such as "#12345",
- * on the line that sets it: Mermaid says only that its format is unsupported, and quotes none for
- * one that it took out, such as a var().
- */
+// Mermaid only says the format is unsupported, quoting none for one it took out, such as var().
 export function themeColorError(error: unknown, source: string): Error | undefined {
   const color =
     error instanceof Error
@@ -530,10 +507,7 @@ export function themeColorError(error: unknown, source: string): Error | undefin
   );
 }
 
-/**
- * Where a sequence diagram first deactivates the participant more often than it activated it:
- * `deactivate` and a message from it with "-" after the arrow deactivate it.
- */
+// The first deactivation of a participant that isn't active; a "-" after an arrow deactivates.
 function deactivation(normalized: string, name: string): number | undefined {
   const arrow = "[^\\S\\n]*<?<?-{1,2}(?:>>|>|x|\\))";
   const statements = new RegExp(
@@ -548,7 +522,6 @@ function deactivation(normalized: string, name: string): number | undefined {
   return undefined;
 }
 
-/** The largest index that linkStyle statements give, which no link has when one fails. */
 function linkStyleIndex(normalized: string): string | undefined {
   const indices = Array.from(
     normalized.matchAll(/^[^\S\n]*linkStyle[^\S\n]+([\d,\s]*\d)/gm),
@@ -557,10 +530,7 @@ function linkStyleIndex(normalized: string): string | undefined {
   return indices.length > 0 ? String(Math.max(...indices)) : undefined;
 }
 
-/**
- * Errors of Mermaid's checks of what it parsed, which do not say where in the source they are: by
- * their messages, where they are, and clearer messages for some.
- */
+// Errors from Mermaid's post-parse checks, which don't say where: located by message.
 const UNPLACED: [
   RegExp,
   (match: RegExpExecArray, normalized: string) => [number | undefined, string?] | undefined,
@@ -603,7 +573,7 @@ const UNPLACED: [
           ];
     },
   ],
-  // Mermaid lays diagrams out with ELK, which fails on an edge of a node that it was not given.
+  // ELK fails on an edge of a node it wasn't given.
   [
     /^org\.eclipse\.elk\..*: Referenced shape does not exist: (.*)$/,
     ([, id = ""], normalized) => [
@@ -611,7 +581,7 @@ const UNPLACED: [
       `Mermaid cannot lay out the edges of "${id}": give the groups and the nodes different ids.`,
     ],
   ],
-  // Mermaid gives its cose-bilkent layout the root node that it needs for mind maps alone.
+  // cose-bilkent gets the root node it needs only for mind maps.
   [
     /^Root node is required$/,
     () => [
@@ -619,12 +589,12 @@ const UNPLACED: [
       'The cose-bilkent layout only lays out mind maps: set "layout" to "dagre" or "elk" instead.',
     ],
   ],
-  // Mermaid's dagre layout fails on any group inside itself, where its ELK one may hang.
+  // dagre fails on a group inside itself, where ELK may hang.
   [
     /^Setting (.*?) as parent of .* would create a cycle$/,
     ([, id = ""], normalized) => insideItself(normalized, id),
   ],
-  // Event models count the line in the text after the front matter: find the second frame.
+  // Event models count lines after the front matter: find the second frame.
   [
     /^Duplicate event modeling frame ID "(.*)"/,
     ([, id = ""], normalized) => {
@@ -635,7 +605,7 @@ const UNPLACED: [
       ];
     },
   ],
-  // A branch can be checked out only after it is created, and never deleted: the first checkout.
+  // Branches are never deleted, so the first checkout is the culprit.
   [
     /^Trying to checkout branch which is not yet created\. \(Help try using "branch (.*)"\)$/,
     ([, name = ""], normalized) => [
@@ -643,7 +613,7 @@ const UNPLACED: [
       `There is no branch "${name}" to check out: create it first, with "branch ${name}".`,
     ],
   ],
-  // A set can be in a union only after it is declared: the first union of the first one.
+  // Sets must be declared before a union: the first union of the first one.
   [
     /^unknown set identifier: (.*)$/,
     ([, list = ""], normalized) => {
@@ -660,8 +630,8 @@ const UNPLACED: [
       ];
     },
   ],
-  // A Gantt chart takes a line with a colon for a task, such as "title: Plan", and fails on its
-  // dates; a task of a duration alone starts where the task before it ends, and the first has none.
+  // Gantt takes "title: Plan" for a task and fails on its dates; so does a first task with only
+  // a duration.
   [
     /^Cannot read properties of undefined \(reading 'endTime'\)$/,
     (_, normalized) => {
@@ -677,8 +647,7 @@ const UNPLACED: [
         : firstTaskWithoutStart(normalized);
     },
   ],
-  // The C4 lexer takes a label that is not quoted up to the next comma, the closing parenthesis
-  // and the lines after it included, which leaves the element out.
+  // The C4 lexer reads an unquoted label up to the next comma, across lines, dropping the element.
   [
     /^C4 rel "(.*?)" -> "(.*?)" references an unknown shape or boundary$/,
     ([, from = "", to = ""], normalized) => {
@@ -693,7 +662,7 @@ const UNPLACED: [
       ];
     },
   ],
-  // A class diagram annotates a class declared before the annotation, and fails on another.
+  // Class annotations need the class declared first.
   [
     /^Cannot read properties of undefined \(reading 'annotations'\)$/,
     (_, normalized) => {
@@ -708,7 +677,7 @@ const UNPLACED: [
         : undefined;
     },
   ],
-  // A timeline adds an event to the last period, and fails on one before any: the first event.
+  // A timeline event before any period.
   [
     /^Cannot read properties of undefined \(reading 'events'\)$/,
     (_, normalized) => {
@@ -718,9 +687,9 @@ const UNPLACED: [
         : [at, 'The event has no time period: start the line with one, as in "2024 : Launch".'];
     },
   ],
-  // A packet field given by its bits, out of order or backwards, or as "+0".
+  // Packet bits out of order, backwards, or "+0".
   [/^Packet block \d+(?: - \d+)? is /, (_, normalized) => [badPacketField(normalized)]],
-  // Block diagrams call the intersection of a diamond unbound, failing on an edge at one.
+  // Block diagrams call a diamond's intersection unbound, failing on an edge at one.
   [
     /^this\.calcIntersect is not a function$/,
     (_, normalized) => {
@@ -755,13 +724,9 @@ const UNPLACED: [
   ],
 ];
 
-/** The tags of a Gantt task, before its data. */
 const TASK_TAGS = /^(?:\s*(?:active|done|crit|milestone|vert)\s*,)*/;
 
-/**
- * The first task of a Gantt chart, if it has a duration or an end alone, with which Mermaid starts
- * a task where the one before it ends: where it is, and the error for there being none before.
- */
+// A first Gantt task with only a duration or end has nothing to start after.
 function firstTaskWithoutStart(normalized: string): [number | undefined, string] | undefined {
   // Keywords take no colon but accTitle and accDescr; a click's URL has one after "href".
   const at = find(normalized, "^[^\\S\\n]*(?!accTitle|accDescr|click\\b)[^:\\n]*\\S[^\\S\\n]*:");
@@ -782,10 +747,7 @@ function firstTaskWithoutStart(normalized: string): [number | undefined, string]
   ];
 }
 
-/**
- * Where the first packet field is that does not start where the one before ends, ends before it
- * starts, or has no bits, as Mermaid checks the fields in order.
- */
+// The first field that doesn't follow the previous one, ends before it starts, or has no bits.
 function badPacketField(normalized: string): number | undefined {
   const start = frontMatterEnd(normalized);
   const fields = /^[^\S\n]*(?:(\d+)(?:[^\S\n]*-[^\S\n]*(\d+))?|\+[^\S\n]*(\d+))[^\S\n]*:/gm;
@@ -801,13 +763,11 @@ function badPacketField(normalized: string): number | undefined {
   return undefined;
 }
 
-/** Where the group is declared, and the error for it being inside itself. */
 const insideItself = (normalized: string, id: string): [number | undefined, string] => [
   find(normalized, `^[^\\S\\n]*(?:state|subgraph|namespace)[^\\S\\n]+${word(id)}`),
   `"${id}" is inside itself, which Mermaid cannot lay out: give the group and what it contains different ids.`,
 ];
 
-/** Describes an error that Mermaid gives no position for, where in the source it can tell. */
 function unplacedError(message: string, normalized: string): Error | undefined {
   for (const [pattern, describe] of UNPLACED) {
     const match = pattern.exec(message);
@@ -817,20 +777,11 @@ function unplacedError(message: string, normalized: string): Error | undefined {
   return undefined;
 }
 
-/**
- * Errors of Mermaid's checks of the statements of a git graph or a Venn diagram, as it runs them
- * in order, which depend on the statements before them: of merges, cherry-picks, branches that
- * exist, and unions and texts.
- */
+// Git graph and Venn checks that depend on earlier statements.
 const STATEMENT_ERROR =
   /^(?:Incorrect usage of "?(?:merge|cherryPick|cherry-pick)\b|Cannot merge branch |Invalid operation: The specified parent commit |Trying to create an existing branch\.|union requires multiple identifiers$|text requires set$)/;
 
-/**
- * The error for a statement that Mermaid's checks fail on, on its line: the first line that the
- * source up to fails on in the same way, which Mermaid runs the same statements up to. `parse`
- * rejects with the error that Mermaid fails to parse a text with; it is given the source up to a
- * line as the renderer gives Mermaid the whole source, so that lines count in the source.
- */
+// Finds the failing line by bisecting on prefixes of the source that fail the same way.
 export async function statementError(
   error: unknown,
   source: string,
@@ -839,7 +790,6 @@ export async function statementError(
   if (!(error instanceof Error) || !STATEMENT_ERROR.test(error.message)) return undefined;
   const normalized = source.replace(/\r\n?/g, "\n");
   const lines = normalized.split("\n");
-  /** How the source up to the line parses: whether it fails the same way, or otherwise. */
   const outcomes = new Map<number, Promise<"parses" | "same" | "other">>();
   const outcome = (line: number) => {
     let found = outcomes.get(line);
@@ -853,31 +803,26 @@ export async function statementError(
     }
     return found;
   };
-  // A search of the lines after the front matter, if the whole text fails so.
+  // Search the lines after the front matter.
   let low = lineStarts(normalized.slice(0, frontMatterEnd(normalized))).length;
   let high = lines.length;
   if ((await outcome(high)) !== "same") return undefined;
   while (low < high) {
     const middle = Math.floor((low + high) / 2);
-    // The source up to a line inside a statement of several lines, such as "accDescr {", fails
-    // otherwise: take the last line before it that it does not.
+    // Cutting inside a multi-line statement, such as "accDescr {", fails otherwise: step back.
     let line = middle;
     let found = await outcome(line);
     while (found === "other" && line > low) found = await outcome(--line);
     if (found === "same") high = line;
     else low = found === "parses" ? line + 1 : middle + 1;
   }
-  // Without the line, the statements before it must run, or the search went astray.
+  // Without the line the rest must parse, or the search went astray.
   return (await outcome(high - 1)) === "parses"
     ? new Error(`Error on line ${high}: ${error.message}`)
     : undefined;
 }
 
-/**
- * The error for a composite state with no states in it, which Mermaid's dagre layout draws as a
- * state, failing to find a state shape for it. Mermaid leaves out the states that a composite
- * state declares with nothing but "state B", which can leave it empty.
- */
+// dagre fails on an empty composite state; Mermaid drops states declared with just "state B".
 export function emptyStateError(
   error: unknown,
   db: DiagramDb | undefined,
@@ -902,12 +847,8 @@ export function emptyStateError(
   );
 }
 
-/**
- * The error for two links of a flowchart with the same id, which Mermaid fails to draw with
- * "Cannot read properties of undefined (reading 'filter')". Mermaid names a link by the ids of its
- * ends, as L_P_Q_R_0 for both P_Q --> R and P --> Q_R, unless the source names it, also with a
- * name that Mermaid gives another link.
- */
+// Mermaid ids links by their ends (L_P_Q_R_0 for both P_Q --> R and P --> Q_R) and can't draw
+// duplicates.
 export function duplicateEdgeError(
   error: unknown,
   db: DiagramDb | undefined,
@@ -960,10 +901,7 @@ export function duplicateEdgeError(
   return undefined;
 }
 
-/**
- * The error for a relationship to something that the diagram does not define, such as an
- * undeclared requirement, on which Mermaid's layouts fail without saying what it is.
- */
+// Mermaid's layouts fail on these without saying what is missing.
 export function undefinedEndError(db: DiagramDb | undefined, source: string): Error | undefined {
   const { nodes = [], edges = [] } = db?.getData?.() ?? {};
   const ids = new Set(nodes.map(({ id }) => id));
@@ -980,15 +918,11 @@ export function undefinedEndError(db: DiagramDb | undefined, source: string): Er
   );
 }
 
-/**
- * The error for a number that is not one, which Mermaid would draw out of place: the score of a
- * user journey task, drawn as a face out of place and a broken line to it, or the value of a
- * sankey flow, for which it draws no flows and every node at one place.
- */
+// Journey scores and sankey values that aren't numbers, which Mermaid draws out of place.
 export function numberError(db: DiagramDb | undefined, source: string): Error | undefined {
   const type = diagramHeader(source).typeLine ?? "";
   const normalized = source.replace(/\r\n?/g, "\n");
-  // Not the tasks of a Gantt chart, which it fails on invalid dates in, to describe as it draws.
+  // Not Gantt tasks, which fail on invalid dates when drawn.
   const tasks = /^journey\b/.test(type) ? (db?.getTasks?.() ?? []) : [];
   const task = tasks.find(({ score }) => Number.isNaN(score))?.task?.trim();
   if (task !== undefined) {
@@ -1001,10 +935,10 @@ export function numberError(db: DiagramDb | undefined, source: string): Error | 
   const flows = /^sankey\b/.test(type) ? (db?.getGraph?.().links ?? []) : [];
   const flow = flows.find(({ value }) => Number.isNaN(value));
   if (flow === undefined) return undefined;
-  // The value is the last field, which Mermaid reads the number at the start of.
+  // Mermaid reads the number at the start of the last field.
   const ends = [flow.source, flow.target].map((end) => `(?=.*${RegExp.escape(end)})`).join("");
   const at = find(normalized, `^${ends}.*,(?![^\\S\\n]*"?[^\\S\\n]*[-+]?\\.?\\d)[^,\\n]*$`);
-  // A first line of words is a header, as of a CSV file, whose names no flow links.
+  // A CSV-style header row, whose names no other flow uses.
   const header =
     flow === flows[0] &&
     at !== undefined &&
@@ -1025,23 +959,16 @@ export function numberError(db: DiagramDb | undefined, source: string): Error | 
   );
 }
 
-/**
- * The error for an edge that Mermaid's ELK layout would loop over forever, freezing the panel: one
- * at a node in a group inside itself, such as a composite state that refers to itself inside.
- * ELK's findCommonAncestor follows the parents of the edge's start until it meets its end, and
- * then those of its end until it meets one of the start's, which a group inside itself never does.
- * A group inside itself without such edges draws, as does one in a kanban, which has no edges.
- * Other layouts draw none of these either: dagre fails on any group inside itself.
- */
+// ELK's findCommonAncestor loops forever, freezing the panel, on an edge at a node in a group
+// inside itself.
 export function nestingError(db: DiagramDb | undefined, source: string): Error | undefined {
   const { nodes = [], edges = [] } = db?.getData?.() ?? {};
-  // As the layout finds them, group by group: of the groups that hold nodes of an id, such as a
-  // class and a namespace of a class diagram, the last is its parent.
+  // As the layout finds them: the last group holding a node is its parent.
   const parents = new Map<string, string>();
   for (const group of nodes.filter(({ isGroup }) => isGroup)) {
     for (const node of nodes) if (node.parentId === group.id) parents.set(node.id, group.id);
   }
-  /** The node and its ancestors, up to the first that is its own ancestor, if one is. */
+  // Up to the first that is its own ancestor, if any.
   const ancestry = (id: string) => {
     const seen = new Set<string>();
     for (let at: string | undefined = id; at !== undefined; at = parents.get(at)) {

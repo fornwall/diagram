@@ -7,7 +7,7 @@ export interface LabelRepair {
   text: string;
 }
 
-/** A parser diagnostic with a local correction that can be tried once. */
+// A parser error with a correction to try once.
 export class RepairableMermaidError extends Error {
   constructor(
     message: string,
@@ -17,7 +17,6 @@ export class RepairableMermaidError extends Error {
   }
 }
 
-/** Preserve line endings and all text outside the label. */
 export function repairLabel(source: string, edit: LabelRepair): SourceRepair {
   const lines = source.split(/(\r\n|\r|\n)/);
   const index = (edit.line - 1) * 2;
@@ -29,7 +28,7 @@ export function repairLabel(source: string, edit: LabelRepair): SourceRepair {
   };
 }
 
-/** Commit only a successful retry; a second failure keeps the original diagnostic. */
+// A second failure keeps the original error.
 export async function renderWithRecovery(
   source: string,
   render: (source: string) => Promise<string>,

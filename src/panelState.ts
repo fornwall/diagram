@@ -1,5 +1,3 @@
-// Persist the panel's diagram across window reloads and VS Code restarts.
-
 import * as vscode from "vscode";
 import type { DocumentBinding } from "./documentDiagram";
 import { isDiagramFence } from "./fences";
@@ -10,7 +8,7 @@ import { errorClause, isDiagramLanguage, isPlainObject } from "./protocol";
 const STATE_KEY = "diagram.state";
 
 export class StateStore {
-  /** State is replaced on every edit; weak identity avoids retaining an old large source. */
+  // Weak, to not retain an old large source.
   private lastSave:
     | { state: WeakRef<DiagramState>; revision: number; promise: Promise<void> }
     | undefined;
@@ -18,10 +16,7 @@ export class StateStore {
 
   constructor(private readonly memento: vscode.Memento) {}
 
-  /**
-   * The saved state, and the revision it was shown in, which a model may still hold from a chat
-   * that goes on after VS Code restarts.
-   */
+  // A model may still hold the revision from a chat that goes on after a restart.
   load(): { state: DiagramState; revision: number } | undefined {
     const saved = this.memento.get(STATE_KEY);
     const state = restoredState(saved);
@@ -34,23 +29,19 @@ export class StateStore {
     return { state, revision };
   }
 
-  /**
-   * Saving the state already saved, or being saved, in the same revision shares that write:
-   * reloads and reopening the panel render the same state, and serializing a large chart source
-   * again is costly.
-   */
+  // Shares the write of the same state and revision, as serializing a large source is costly.
   save(state: DiagramState, revision: number): Promise<void> {
     const last = this.lastSave;
     if (last?.state.deref() === state && last.revision === revision) return last.promise;
     let saved: object = state;
     if (state.document && state.document.fence.source === state.source) {
-      // The block holds the diagram shown, as when it was opened or written: save it once.
+      // Save the source once.
       const { source: _, ...fence } = state.document.fence;
       saved = { ...state, document: { ...state.document, fence } };
     }
     const { userEdit } = state;
     if (userEdit) {
-      // The user's edit is the source, which is saved once; an edit that it no longer is, none.
+      // userEdit.to is the source, saved once; drop an outdated edit.
       const { userEdit: _, ...rest } = saved as DiagramState;
       saved = userEdit.to === state.source ? { ...rest, userEdit: { from: userEdit.from } } : rest;
     }
@@ -75,11 +66,7 @@ export class StateStore {
   }
 }
 
-/**
- * The saved state, keeping what this version can use. A state saved by another version of the
- * extension, or damaged, must not break the panel: the parts that do not fit are left out, and a
- * state with nothing left to show is dropped.
- */
+// Another version's or a damaged state must not break the panel: drop what does not fit.
 function restoredState(saved: unknown): DiagramState | undefined {
   if (!isPlainObject(saved) || typeof saved.title !== "string") return undefined;
   // The first versions drew only Mermaid, and did not save the language.
@@ -96,8 +83,7 @@ function restoredState(saved: unknown): DiagramState | undefined {
   };
   if (typeof saved.error === "string") state.error = saved.error;
   if (typeof saved.clickPrompt === "string") state.clickPrompt = saved.clickPrompt;
-  // Saved without the user's edit, which is the source, or by older versions with it, also once
-  // the source was no longer that edit.
+  // userEdit.to is the source, or was saved by older versions, also when outdated.
   const { userEdit } = saved;
   if (isPlainObject(userEdit) && typeof userEdit.from === "string") {
     const { from, to = state.source } = userEdit;
@@ -131,10 +117,7 @@ function validLine(value: unknown): value is number {
   );
 }
 
-/**
- * The binding, with the source of its block, which is saved without it when it is the diagram's.
- * Older versions saved fences with other properties, which a write to the document cannot use.
- */
+// Older versions saved fences with other properties, which writes cannot use.
 function documentBinding(value: unknown, source: string): DocumentBinding | undefined {
   if (!isPlainObject(value) || !isSavedUri(value.uri) || !isPlainObject(value.fence)) {
     return undefined;

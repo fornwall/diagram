@@ -1,8 +1,5 @@
-// Parses CSS colors without the DOM.
-
 import type { Rgba } from "./webview/colors";
 
-/** The CSS named colors (CSS Color Module Level 4), and transparent. */
 const NAMED_COLORS: Record<string, string> = {
   aliceblue: "f0f8ff",
   antiquewhite: "faebd7",
@@ -156,10 +153,9 @@ const NAMED_COLORS: Record<string, string> = {
 };
 
 const FUNCTION = /^(rgba?|hsla?)\(\s*(.*?)\s*\)$/;
-/** A number and its unit, if any. */
 const COMPONENT = /^([+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)(%|deg|grad|rad|turn)?$/;
 
-/** A CSS color: a name, #rgb, #rgba, #rrggbb, #rrggbbaa, rgb()/rgba() or hsl()/hsla(). */
+// Without the DOM.
 export function parseColor(text: string): Rgba | undefined {
   const value = text.trim().toLowerCase();
   if (Object.hasOwn(NAMED_COLORS, value)) {
@@ -200,7 +196,7 @@ function parseHex(hex: string): Rgba | undefined {
   return { r: byte(0), g: byte(2), b: byte(4), a: digits.length === 8 ? byte(6) / 255 : 1 };
 }
 
-/** "1, 2, 3", "1, 2, 3, 0.5", "1 2 3" or "1 2 3 / 50%". */
+// "1, 2, 3", "1, 2, 3, 0.5", "1 2 3" or "1 2 3 / 50%".
 function splitComponents(text: string): string[] | undefined {
   if (text.includes(",")) {
     const parts = text.split(",").map((part) => part.trim());
@@ -214,7 +210,7 @@ function splitComponents(text: string): string[] | undefined {
   return alpha === undefined ? parts : [...parts, alpha];
 }
 
-/** A number, or a percentage of `max`, clamped to 0…max. */
+// Clamped to 0…max.
 function fraction(text: string, max: number): number | undefined {
   const match = COMPONENT.exec(text);
   const value = Number(match?.[1]);
@@ -224,7 +220,6 @@ function fraction(text: string, max: number): number | undefined {
   return Math.min(Math.max(match[2] === "%" ? (value * max) / 100 : value, 0), max);
 }
 
-/** A hue in degrees, from 0 to 360. */
 function degrees(text: string): number | undefined {
   const match = COMPONENT.exec(text);
   const value = Number(match?.[1]);

@@ -1,5 +1,3 @@
-// Export the drawing shown in the panel as PNG or SVG.
-
 import * as os from "node:os";
 import * as vscode from "vscode";
 import { notebookOf } from "./documentDiagram";
@@ -16,20 +14,14 @@ import {
 
 const PNG_DATA_URL = /^data:image\/png;base64,([A-Za-z0-9+/]+={0,2})$/;
 
-/** The bytes of a PNG data URL from the page, unless it is not one. */
 export function pngBytes(dataUrl: string): Uint8Array | undefined {
   const base64 = PNG_DATA_URL.exec(dataUrl)?.[1];
   return base64 === undefined ? undefined : Buffer.from(base64, "base64");
 }
 
-/** Where the last export went, where the next one is likely to go too. */
 let lastFolder: vscode.Uri | undefined;
 
-/**
- * Asks for a format, captures the drawing in it and saves it where the user chooses. capture asks
- * the webview for the drawing, and throws if it changed while the user was choosing. A drawing
- * opened from a document is saved beside it by default, where the document can show the image.
- */
+// capture throws if the drawing changed while the user was choosing.
 export async function exportDrawing(
   drawing: {
     language: DiagramLanguage;
@@ -90,22 +82,19 @@ export async function exportDrawing(
   }
 }
 
-/**
- * The folder of the document a drawing was opened from, or of a cell's notebook, or of the last
- * export, if that is in it, as when images go in a folder of their own; without a document on a file
- * system that can be written, unlike an untitled one or a Git revision, that of the last export.
- */
+// Beside the document, or in the last export's folder if that is within it (as for an images
+// folder). Without a writable document, such as an untitled one or a Git revision, the last one.
 function defaultFolder(opened: vscode.Uri | undefined): vscode.Uri | undefined {
   const document = opened && notebookOf(opened);
   if (!document || vscode.workspace.fs.isWritableFileSystem(document.scheme) !== true) {
     return lastFolder;
   }
   const folder = vscode.Uri.joinPath(document, "..");
-  // By the file system's rules, as Windows names a drive in either case and ignores case.
+  // Windows ignores case.
   return lastFolder && contains(folder, lastFolder) ? lastFolder : folder;
 }
 
-/** Says why the file could not be saved, without the "Error: " that VS Code puts before it. */
+// Without the "Error: " that VS Code prefixes.
 function saveError(error: unknown, target: vscode.Uri): Error {
   const code = error instanceof vscode.FileSystemError ? error.code : undefined;
   const message = errorMessage(error).replace(/^Error: /, "");
@@ -121,7 +110,6 @@ function saveError(error: unknown, target: vscode.Uri): Error {
   return new Error(message);
 }
 
-/** Says where the export was saved, and opens it in VS Code if the user asks. */
 async function offerToOpen(target: vscode.Uri, noun: string): Promise<void> {
   try {
     const open = await vscode.window.showInformationMessage(

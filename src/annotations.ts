@@ -1,5 +1,3 @@
-// Validate diagram_annotate input.
-
 import {
   type Annotation,
   type DiagramMark,
@@ -9,7 +7,7 @@ import {
 } from "./protocol";
 import { brief, givenProperties, quoteAll, unknownProperties } from "./text";
 
-/** As declared in package.json, but a model may not follow the schema exactly. */
+// As in package.json, though a model may not follow the schema exactly.
 export interface AnnotateInput {
   marks?: { id: string; mark?: string; text?: string }[];
   dim?: boolean;
@@ -23,7 +21,6 @@ const MAX_MARKS = 50;
 
 const EXAMPLE = '{"marks": [{"id": "pay", "mark": "problem"}]}';
 
-/** Each call replaces all marks. Reject malformed input with a list of problems. */
 export function validateAnnotation(value: unknown): Annotation {
   if (!isPlainObject(value)) {
     throw new Error(`The marks must be given as an object, e.g. ${EXAMPLE}.`);
@@ -55,7 +52,6 @@ export function validateAnnotation(value: unknown): Annotation {
 function parseMarks(input: unknown, problems: string[]): DiagramMark[] {
   const marks: DiagramMark[] = [];
   if (input !== undefined) {
-    // One mark, as a model may send it without an array.
     const given = Array.isArray(input) ? input : [input];
     if (given.length > MAX_MARKS) {
       problems.push(
@@ -79,7 +75,7 @@ function parseMarks(input: unknown, problems: string[]): DiagramMark[] {
 }
 
 function parseMark(given: unknown, marked: Set<string>): DiagramMark | string {
-  // A model may name a node without saying how to mark it, as a bare id rather than an object.
+  // A model may send a bare id.
   const value = typeof given === "string" ? { id: given } : given;
   if (!isPlainObject(value)) {
     return 'A mark must be an object, e.g. {"id": "pay", "mark": "problem"}.';
@@ -98,7 +94,6 @@ function parseMark(given: unknown, marked: Set<string>): DiagramMark | string {
     return `${JSON.stringify(id)} is marked twice; give each node one mark.`;
   }
   marked.add(id);
-  // As a model may write it: "Problem".
   const kind = typeof mark.mark === "string" ? mark.mark.toLowerCase() : (mark.mark ?? "current");
   if (!isMarkKind(kind)) {
     return `"mark" is ${brief(kind)}; it must be one of ${quoteAll(MARK_KINDS)}.`;

@@ -1,38 +1,30 @@
-// How to fix the syntax errors that models commonly make in Mermaid, where the parser's message
-// says no more than where it stopped and which tokens it expected. Each hint is checked to fix the
-// error it is for (see webviewMermaidErrors.test.ts).
+// Hints for syntax errors models commonly make, where Mermaid's message says little.
 
 import { frontMatterEnd } from "../mermaidSyntax";
 import { joinWords } from "../text";
 import type { LabelRepair } from "./mermaidRecovery";
 
-/** Where a parser stopped. */
 export interface Stop {
-  /** The diagram type that Mermaid detected. */
   type: string;
-  /** The source, with normalized line breaks. */
+  // With normalized line breaks.
   normalized: string;
-  /** The span of what the parser did not expect. */
+  // The span the parser did not expect.
   start: number;
   end: number;
-  /** The tokens that the parser expected instead. */
   expected: readonly string[] | undefined;
 }
 
-/** A stop, with the line it is on. */
 interface At extends Stop {
-  /** The line, its number from 1, and where on it the parser stopped, from 0. */
   line: string;
+  // From 1.
   lineNumber: number;
+  // From 0.
   column: number;
-  /** The line before and from where the parser stopped. */
   before: string;
   after: string;
-  /** Whether the parser stopped at the end of the diagram. */
   atEnd: boolean;
 }
 
-/** A hint that tells how to fix the syntax error at the stop, if a common mistake explains it. */
 export function syntaxHint(stop: Stop, repair?: (edit: LabelRepair) => void): string | undefined {
   const { normalized, start } = stop;
   const lineStart = normalized.lastIndexOf("\n", start - 1) + 1;
@@ -63,10 +55,9 @@ type Rule = (at: At) => string | { message: string; repair?: LabelRepair } | und
 
 const FLOWCHART = /^flowchart/;
 
-/** An id as Mermaid takes it, made of the name. */
+// As Mermaid makes ids from names.
 const idOf = (name: string) => name.trim().replace(/\W+/g, "_");
 
-/** Comments: on lines of their own, starting with %%. */
 const comments: Rule = ({ line, before, after }) => {
   const comment = /^\s*(\/\/|#(?![\w-]+;))\s*(.*)$/.exec(line);
   if (comment) {
@@ -78,14 +69,11 @@ const comments: Rule = ({ line, before, after }) => {
   return undefined;
 };
 
-/** The blocks that a kind of diagram nests, by the lines that open and close them. */
 interface Blocks {
-  /** Opens a block, naming it in the first group. */
+  // Names the block in the first group.
   open: RegExp;
   close: RegExp;
-  /** What closes one. */
   closer: string;
-  /** What the hint calls a block that the line opens. */
   name: (opening: RegExpExecArray) => string;
 }
 
@@ -116,10 +104,7 @@ function blocksOf(type: string): Blocks | undefined {
   return /^(?:stateDiagram|classDiagram|er$)/.test(type) ? BRACES : undefined;
 }
 
-/**
- * The blocks open at the end of the lines before the line, as the numbers of the lines that opened
- * them, and whether a line before it closed a block that none opened.
- */
+// Opening line numbers of blocks still open before the line; undefined if one closes too many.
 function openBlocks(normalized: string, blocks: Blocks, before: number): number[] | undefined {
   const open: number[] = [];
   const lines = normalized.split("\n");
@@ -132,7 +117,6 @@ function openBlocks(normalized: string, blocks: Blocks, before: number): number[
   return open;
 }
 
-/** A block that the diagram leaves open, which the parser stops at the end of the diagram for. */
 const unclosedBlock: Rule = ({ type, normalized, atEnd }) => {
   const blocks = blocksOf(type);
   if (!atEnd || !blocks) return undefined;
@@ -145,10 +129,10 @@ const unclosedBlock: Rule = ({ type, normalized, atEnd }) => {
     : undefined;
 };
 
-/** What a line that continues a sequence diagram block goes in. */
+// The sequence block each continuation goes in.
 const CONTINUES: Record<string, string> = { else: "alt", and: "par", option: "critical" };
 
-/** A line that closes or continues a block outside of any. */
+// A line that closes or continues a block outside of any.
 const strayEnd: Rule = ({ type, normalized, line, lineNumber, after }) => {
   const blocks = blocksOf(type);
   if (!blocks || after.trim() !== line.trim()) return undefined;
@@ -170,7 +154,6 @@ const strayEnd: Rule = ({ type, normalized, line, lineNumber, after }) => {
 
 const DIRECTIONS = ["TB", "TD", "BT", "RL", "LR"];
 
-/** A flowchart direction in lower case, or a word that is none. */
 const flowchartDirection: Rule = ({ type, normalized, lineNumber }) => {
   if (!FLOWCHART.test(type)) return undefined;
   const lines = normalized.split("\n");
@@ -181,18 +164,17 @@ const flowchartDirection: Rule = ({ type, normalized, lineNumber }) => {
   return `The direction is TB, TD, BT, RL or LR, in capitals: "${header[1]} ${fixed}".`;
 };
 
-/** The words that flowcharts take as keywords wherever they are, such as "end" for a subgraph. */
+// Keywords wherever they are, such as "end".
 const FLOWCHART_KEYWORDS =
   /^(end|subgraph|classDef|class|style|linkStyle|click|call|href|graph|flowchart)(?![\w-])/;
 
-/** A keyword as a node id. */
 const keywordId: Rule = ({ type, after, line }) => {
   const word = FLOWCHART.test(type) ? FLOWCHART_KEYWORDS.exec(after)?.[1] : undefined;
   if (!word || line.trim() === word) return undefined;
   return `"${word}" is a keyword, so it cannot be a node id: use another id, such as ${word}Node[${word}].`;
 };
 
-/** The shapes of flowchart nodes, by the brackets that open and close their labels. */
+// Opening bracket and closing alternatives.
 const SHAPES: [string, string[]][] = [
   ["(((", [")))"]],
   ["([", ["])"]],
@@ -207,26 +189,21 @@ const SHAPES: [string, string[]][] = [
   ["{", ["}"]],
   [">", ["]"]],
 ];
-/** A node with its id and the bracket that opens its label. */
+// A node id and its opening bracket.
 const NODE = new RegExp(
   `(?<![\\w.-])([A-Za-z0-9_](?:[\\w.-]*\\w)?)(${SHAPES.map(([open]) => RegExp.escape(open)).join("|")})`,
   "g",
 );
-/** The opening bracket of each closing one. */
 const OPENING: Record<string, string> = { ")": "(", "]": "[", "}": "{" };
-/** The characters that a label must be quoted for, besides quotes. */
+// Characters that need a label quoted.
 const SPECIAL = /[()[\]{}|"]/;
 
-/**
- * A label with brackets, parentheses, braces, pipes or quotes, which must be quoted, or any label of
- * a block diagram.
- */
+// Labels with special characters must be quoted, and block diagram labels always.
 const unquotedLabel: Rule = ({ type, line, lineNumber, column }) => {
-  // Block diagrams take no label unquoted; mind maps take labels as flowcharts do.
+  // Mind maps take labels as flowcharts do.
   const block = type === "block";
   if (!FLOWCHART.test(type) && type !== "mindmap" && !block) return undefined;
-  // The node whose label the parser stopped in: the last that starts before it, if no link
-  // comes between.
+  // The last node starting before the stop, if no link comes between.
   const node = Array.from(line.matchAll(NODE))
     .filter((match) => match.index + match[0].length <= column)
     .at(-1);
@@ -234,8 +211,7 @@ const unquotedLabel: Rule = ({ type, line, lineNumber, column }) => {
     const [opened, id, open] = node as unknown as [string, string, string];
     const from = node.index + opened.length;
     const closers = SHAPES.find(([shape]) => shape === open)?.[1] ?? [];
-    // The label ends with the closing bracket that balances the opening ones and those in it,
-    // outside of quotes.
+    // The closing bracket that balances, outside quotes.
     const last = closers[0]?.at(-1) ?? "";
     let depth = 0;
     let quoted = false;
@@ -286,7 +262,7 @@ const unquotedLabel: Rule = ({ type, line, lineNumber, column }) => {
   return undefined;
 };
 
-/** A link's label after the node it leads to, as a sequence message's text: "A --> B: yes". */
+// As a sequence message's text: "A --> B: yes".
 const colonLabel: Rule = ({ type, line, column }) => {
   const link = FLOWCHART.test(type)
     ? /^(\s*\S.*?)\s*(<?-->|---|-\.->|-\.-|==>|===)\s*([\w-]+):\s*(\S.*)$/.exec(line)
@@ -295,7 +271,6 @@ const colonLabel: Rule = ({ type, line, column }) => {
   return `A link's label goes between pipes after the arrow: ${(link[1] as string).trim()} ${link[2]}|${link[4]}| ${link[3]}.`;
 };
 
-/** A link at the end of the diagram that leads to no node. */
 const danglingLink: Rule = ({ type, before, atEnd }) => {
   const link =
     FLOWCHART.test(type) && atEnd
@@ -306,13 +281,12 @@ const danglingLink: Rule = ({ type, before, atEnd }) => {
     : undefined;
 };
 
-/** A subgraph's direction with a colon. */
 const directionColon: Rule = ({ type, line }) => {
   const direction = FLOWCHART.test(type) ? /^\s*direction\s*:\s*(\w+)/.exec(line) : null;
   return direction ? `Write "direction ${direction[1]}", without a colon.` : undefined;
 };
 
-/** Something between an edge's label and the node it leads to, as in "-->|yes|> B". */
+// As in "-->|yes|> B".
 const afterEdgeLabel: Rule = ({ type, line, before, after }) => {
   if (!FLOWCHART.test(type) || !before.endsWith("|") || !after.startsWith(">")) return undefined;
   const fixed = `${before}${after.slice(1).trimStart() ? ` ${after.slice(1).trimStart()}` : ""}`;
@@ -321,7 +295,7 @@ const afterEdgeLabel: Rule = ({ type, line, before, after }) => {
     : undefined;
 };
 
-/** A link written as an arrow of another language, such as -> or =>. */
+// Arrows of other languages, such as -> or =>.
 const flowchartArrow: Rule = ({ type, before, after }) => {
   if (!FLOWCHART.test(type)) return undefined;
   const arrow = /^(->|=>)(?!>)/.exec(after)?.[1];
@@ -330,7 +304,7 @@ const flowchartArrow: Rule = ({ type, before, after }) => {
   return `Write links as -->, ---, -.->, ==> or ~~~: ${fixed.trim()}.`;
 };
 
-/** Words of a node's name after its first, which the parser stops at: ids have no spaces. */
+// A node id with spaces.
 const spacedId: Rule = ({ type, normalized, before, after }) => {
   if (!FLOWCHART.test(type)) return undefined;
   const first = /(?:^|-->|---|==>|-\.->|&)\s*([A-Za-z0-9_][\w-]*)\s+$/.exec(before.trimStart());
@@ -344,11 +318,9 @@ const spacedId: Rule = ({ type, normalized, before, after }) => {
     : `Ids have no spaces: write the node as ${id}["${name}"], and link to ${id}.`;
 };
 
-/** The words that start statements of sequence diagrams, which cannot name participants. */
 const SEQUENCE_KEYWORDS =
   "alt|opt|loop|par|par_over|critical|break|rect|box|end|else|and|option|note|create|destroy|activate|deactivate";
 
-/** A keyword that a message comes from or goes to, as a participant's name. */
 const sequenceKeyword: Rule = ({ type, normalized }) => {
   if (type !== "sequence") return undefined;
   const message = new RegExp(
@@ -362,7 +334,7 @@ const sequenceKeyword: Rule = ({ type, normalized }) => {
   return `"${word}" on line ${line} is a keyword, so it cannot be a participant's name: declare the participant as "participant P as ${word}" and use P.`;
 };
 
-/** A ";" in the text of a message or note, which ends the statement there. */
+// A ";" in a message or note ends the statement.
 const sequenceSemicolon: Rule = ({ type, line }) => {
   const colon = line.indexOf(":");
   if (type !== "sequence" || colon < 0 || !line.includes(";", colon)) return undefined;
@@ -373,7 +345,6 @@ const sequenceSemicolon: Rule = ({ type, line }) => {
     : `A ";" ends a statement: write it as #59; in text: ${fixed.trim()}.`;
 };
 
-/** A note or message without the colon before its text. */
 const sequenceColon: Rule = ({ type, line, expected }) => {
   if (type !== "sequence" || !expected?.includes("TXT") || line.includes(":")) return undefined;
   const note = /^\s*(note\s+(?:left of|right of|over)\s+[^\s:]+)\s+(\S.*)$/i.exec(line);
@@ -381,7 +352,7 @@ const sequenceColon: Rule = ({ type, line, expected }) => {
   return `A message takes a colon before its text: ${line.trim()}: text.`;
 };
 
-/** A note that names no side of a participant to go on, as in "Note A: text". */
+// As in "Note A: text".
 const notePlace: Rule = ({ type, line }) => {
   const note =
     type === "sequence"
@@ -392,7 +363,7 @@ const notePlace: Rule = ({ type, line }) => {
     : undefined;
 };
 
-/** A box of participants left open before the messages, which only participants can follow. */
+// A box left open before the messages, which only participants can follow.
 const openBox: Rule = ({ type, normalized, lineNumber, expected }) => {
   if (type !== "sequence" || !expected?.includes("participant")) return undefined;
   const open = openBlocks(normalized, blocksOf(type) as Blocks, lineNumber)?.at(-1);
@@ -401,10 +372,10 @@ const openBox: Rule = ({ type, normalized, lineNumber, expected }) => {
     : undefined;
 };
 
-/** An arrow of another language in a sequence diagram, such as => or <-. */
+// Arrows of other languages, such as => or <-.
 const sequenceArrow: Rule = ({ type, line, column }) => {
   if (type !== "sequence") return undefined;
-  // The run of arrow characters that the parser stopped in or right before.
+  // The arrow characters at the stop.
   let from = column;
   while (from > 0 && /[-=<>]/.test(line[from - 1] as string)) from--;
   let to = column;
@@ -420,7 +391,6 @@ const sequenceArrow: Rule = ({ type, line, column }) => {
   return `${list}: ${fixed.trim()}.`;
 };
 
-/** Generic types in angle brackets, which class diagrams write with tildes. */
 function withTildes(text: string): string {
   return text.replace(/(\w)<([^<>]*(?:<[^<>]*>[^<>]*)*)>/g, (_, name, inner: string) => {
     // Class names take no generics within generics.
@@ -430,7 +400,6 @@ function withTildes(text: string): string {
   });
 }
 
-/** Generic types in angle brackets, where the parser stopped. */
 const classGenerics: Rule = ({ type, line, column }) => {
   const generic = Array.from(line.matchAll(/\w<[^<>\n]*(?:<[^<>\n]*>[^<>\n]*)*>/g)).find(
     (match) => column >= match.index && column <= match.index + match[0].length,
@@ -442,7 +411,6 @@ const classGenerics: Rule = ({ type, line, column }) => {
     .trim()}.`;
 };
 
-/** A class relation: its classes, cardinalities and arrow. */
 const CLASS_RELATION =
   /^(\s*)([\w.~]+)\s+(?:("?)([^\s"]+)\3\s+)?((?:<\||\*|o|<)?(?:--|\.\.)(?:\|>|\*|o|>)?)\s+(?:("?)([^\s"]+)\6\s+)?([\w.~]+)(.*)$/;
 
@@ -490,14 +458,13 @@ const stateDash: Rule = ({ type, before, after }) => {
   return `State ids have no "-": use ${idOf(name)}, and show the name with state "${name}" as ${idOf(name)}.`;
 };
 
-/** An attribute written name: type. */
+// Written "name: type".
 const erAttribute: Rule = ({ type, line, after }) => {
   const attribute = /^\s*([\w-]+)\s*:\s*(\S+)(.*)$/.exec(line);
   if (type !== "er" || !after.startsWith(":") || !attribute) return undefined;
   return `Write an attribute as its type, then its name: ${attribute[2]} ${attribute[1]}${attribute[3]}.`;
 };
 
-/** Keys of an attribute without commas between them, or a comment in single quotes. */
 const erKeys: Rule = ({ type, line, after }) => {
   if (type !== "er") return undefined;
   const keys = /\b(PK|FK|UK)\s+(?=(?:PK|FK|UK)\b)/g;
@@ -509,7 +476,6 @@ const erKeys: Rule = ({ type, line, after }) => {
     : undefined;
 };
 
-/** The cardinalities that ER diagrams write on the left and on the right of a relationship. */
 const LEFT_CARDINALITY: Record<string, string> = {
   "1": "||",
   "0..1": "|o",
@@ -529,10 +495,8 @@ const RIGHT_CARDINALITY: Record<string, string> = {
 const ER_LEFT = new Set(["||", "|o", "}|", "}o"]);
 const ER_RIGHT = new Set(["||", "o|", "|{", "o{"]);
 
-/** A relationship of an ER diagram: its entities, cardinalities and label. */
 const ER_RELATIONSHIP = /^\s*("[^"]*"|[\w-]+)\s+(\S+?)(--|\.\.)(\S+)\s+("[^"]*"|[\w-]+)(\s*:.*)?$/;
 
-/** A relationship of an ER diagram without cardinalities. */
 const ER_BARE_RELATIONSHIP = /^\s*("[^"]*"|[\w-]+)\s+()(--|\.\.)()\s+("[^"]*"|[\w-]+)(\s*:.*)?$/;
 
 const erCardinality: Rule = ({ type, line, expected, after }) => {
@@ -548,7 +512,6 @@ const erCardinality: Rule = ({ type, line, expected, after }) => {
   return `Write cardinalities as ||, |o, }| or }o left of -- or .., and ||, o|, |{ or o{ right of it: ${example.trim()}.`;
 };
 
-/** A relationship without a label, or with one that has characters that need quotes. */
 const erLabel: Rule = ({ type, line, column, expected }) => {
   if (type !== "er" || !/--|\.\./.test(line)) return undefined;
   const colon = line.indexOf(":");
@@ -562,7 +525,6 @@ const erLabel: Rule = ({ type, line, column, expected }) => {
   return `Put the label in double quotes: ${line.slice(0, colon).trim()} : "${label.replace(/"/g, "#quot;")}".`;
 };
 
-/** Entity labels in a relationship, which they are declared apart from. */
 const erAlias: Rule = ({ type, line }) => {
   const aliases = type === "er" ? Array.from(line.matchAll(/([\w-]+)\["[^"]*"\]/g)) : [];
   if (aliases.length === 0 || !/--|\.\./.test(line)) return undefined;
@@ -573,7 +535,6 @@ const erAlias: Rule = ({ type, line }) => {
   return `Declare an entity's label on a line of its own, as ${declared}, and use its id in relationships: ${line.replace(/\["[^"]*"\]/g, "").trim()}.`;
 };
 
-/** A pie slice whose label is not quoted, or whose value is not a number alone. */
 const pieSlice: Rule = ({ type, line, after }) => {
   if (type !== "pie") return undefined;
   const title = /^(\s*(?:pie\s+)?title)\s*:\s*(.*)$/.exec(line);
@@ -585,7 +546,6 @@ const pieSlice: Rule = ({ type, line, after }) => {
   return slice[1] ? undefined : `Put the label in double quotes: ${fixed}.`;
 };
 
-/** An architecture edge without the sides that it joins, with sides in lower case, or a label. */
 const architectureEdge: Rule = ({ type, line, after, expected }) => {
   if (type !== "architecture") return undefined;
   const sides = "Architecture edges join sides of services, L, R, T or B";
@@ -607,7 +567,6 @@ const architectureEdge: Rule = ({ type, line, after, expected }) => {
   return undefined;
 };
 
-/** Subgraphs and "columns: 3" in block diagrams. */
 const blockSyntax: Rule = ({ type, normalized, line }) => {
   if (type !== "block") return undefined;
   const subgraph = /^[^\S\n]*subgraph\s+([\w-]+)/m.exec(normalized);
@@ -619,19 +578,15 @@ const blockSyntax: Rule = ({ type, normalized, line }) => {
   return columns ? `Write "columns ${columns[1]}", without a colon.` : undefined;
 };
 
-/**
- * A quoted field that starts an indented line of a sankey diagram, which its parser fails on, or
- * a header row of such fields.
- */
+// The sankey parser fails on indented lines starting with a quoted field, as in header rows.
 const sankeyQuote: Rule = ({ type, line, before, after }) => {
   if (type !== "sankey" || !after.startsWith('"') || before.trim()) return undefined;
-  // A flow's value is a number: a word there is the name of a column.
+  // A word where the value goes names a column.
   return /,\s*"?\s*[A-Za-z][^,]*$/.test(line)
     ? "A sankey diagram has no header row: remove this line, and start with the first flow."
     : `Leave out the indentation of a line that starts with a quoted field: ${line.trim()}`;
 };
 
-/** A flow written with an arrow or a colon, rather than as source,target,value. */
 const sankeyFlow: Rule = ({ type, line }) => {
   const flow =
     type === "sankey"
@@ -641,7 +596,6 @@ const sankeyFlow: Rule = ({ type, line }) => {
   return `A sankey diagram lists its flows as source,target,value: ${flow[1]},${flow[2]},${flow[3] ?? 10}.`;
 };
 
-/** A packet field named without quotes. */
 const packetName: Rule = ({ type, line, after }) => {
   const field =
     type === "packet" ? /^\s*(\+?\d+(?:\s*-\s*\d+)?)\s*:\s*([^"\n]+?)\s*$/.exec(line) : null;
@@ -650,7 +604,6 @@ const packetName: Rule = ({ type, line, after }) => {
     : undefined;
 };
 
-/** A treemap section or leaf named without quotes. */
 const treemapName: Rule = ({ type, line, expected }) => {
   const item =
     type === "treemap" && expected?.includes("STRING2")
@@ -661,7 +614,6 @@ const treemapName: Rule = ({ type, line, expected }) => {
     : undefined;
 };
 
-/** A radar curve with its values in brackets, where its label goes. */
 const radarValues: Rule = ({ type, line, expected }) => {
   const curve =
     type === "radar" && expected?.includes("STRING")
@@ -670,13 +622,12 @@ const radarValues: Rule = ({ type, line, expected }) => {
   return curve ? `A curve's values go in braces: curve ${curve[1]}{${curve[2]}}.` : undefined;
 };
 
-/** A quadrant chart point with coordinates beyond 0 to 1, such as percentages. */
 const quadrantPoint: Rule = ({ type, line }) => {
   const point = type === "quadrantChart" ? /^(\s*[^:\n]+:\s*)\[([^\]]*)\]/.exec(line) : null;
   if (!point) return undefined;
   const values = (point[2] as string).split(",").map((value) => value.trim());
   const range = "Point coordinates go from 0 to 1, across and up the chart";
-  // Percentages, with or without the sign: whole numbers up to 100.
+  // Percentages, with or without the sign.
   const percent = (value: string) => value.endsWith("%") || Number(value) > 1;
   const valid = (value: string) =>
     percent(value)
@@ -692,7 +643,6 @@ const quadrantPoint: Rule = ({ type, line }) => {
   return beyond === undefined ? undefined : `${range}, not to ${beyond}.`;
 };
 
-/** Arrows of other diagrams, and parentheses around use case names, in a use case diagram. */
 const usecaseRelation: Rule = ({ type, line }) => {
   if (type !== "usecase") return undefined;
   const arrow = /(?<![-<.ox])(->|=>|<-)(?![->])/.exec(line);
@@ -706,15 +656,11 @@ const usecaseRelation: Rule = ({ type, line }) => {
   return `A use case goes by its name, without parentheses: ${line.replace(parens[0], name).trim()}.`;
 };
 
-/** The statements of C4 diagrams, each a keyword and its arguments in parentheses. */
 const C4_STATEMENT =
   /^[^\S\n]*((?:Person|System|Container|Component|Enterprise_Boundary|System_Boundary|Container_Boundary|Boundary|Deployment_Node|Node|Rel|BiRel)\w*)\(([^\n]*)$/gm;
 
-/**
- * The first statement of a C4 diagram with an argument after its aliases that is not quoted,
- * which Mermaid reads up to the next comma, the closing parenthesis and the lines after it
- * included: where it is, and the statement with its labels in quotes.
- */
+// The first C4 statement with an unquoted label, which Mermaid reads past the closing
+// parenthesis and following lines, and the statement with its labels quoted.
 export function c4UnquotedArguments(normalized: string): { at: number; fixed: string } | undefined {
   for (const { 1: keyword = "", 2: rest = "", index } of normalized.matchAll(C4_STATEMENT)) {
     const aliases = /^(?:Rel|BiRel)/.test(keyword) ? 2 : 1;
@@ -727,13 +673,11 @@ export function c4UnquotedArguments(normalized: string): { at: number; fixed: st
   return undefined;
 }
 
-/** A C4 label without quotes, which takes in the rest of the statement. */
 const c4Quotes: Rule = ({ type, normalized }) => {
   const unquoted = type === "c4" ? c4UnquotedArguments(normalized) : undefined;
   return unquoted ? `Put the labels in double quotes: ${unquoted.fixed}.` : undefined;
 };
 
-/** The range of an XY chart axis written without an arrow. */
 const xyAxisRange: Rule = ({ type, line, expected }) => {
   const range =
     type === "xychart" && expected?.includes("ARROW_DELIMITER")
@@ -744,7 +688,6 @@ const xyAxisRange: Rule = ({ type, line, expected }) => {
     : undefined;
 };
 
-/** Git commands rather than those of a git graph. */
 const gitCommand: Rule = ({ type, line, after, column, expected }) => {
   if (type !== "gitGraph") return undefined;
   const checkout = /^\s*(?:checkout|switch)\s+-[bc]\s+(\S+)/.exec(line);
@@ -768,7 +711,6 @@ const gitCommand: Rule = ({ type, line, after, column, expected }) => {
   return undefined;
 };
 
-/** A requirement's text, or another field, with punctuation that the parser stops at. */
 const RISKS = ["low", "medium", "high"];
 const VERIFY_METHODS = ["analysis", "inspection", "test", "demonstration"];
 
@@ -777,7 +719,6 @@ const requirementText: Rule = ({ type, line, column, expected }) => {
   if (!field || column < (field[1] as string).length) return undefined;
   const [, , key = "", value = ""] = field;
   const name = key.toLowerCase();
-  // A risk or a verification method is one of a few words; the other fields take a string.
   const options = name === "risk" ? RISKS : name === "verifymethod" ? VERIFY_METHODS : undefined;
   if (options) {
     const words = value.toLowerCase().split(/\W+/);
@@ -789,7 +730,6 @@ const requirementText: Rule = ({ type, line, column, expected }) => {
     : undefined;
 };
 
-/** Radar axis or curve labels without quotes, and negative values. */
 const radarLabel: Rule = ({ type, line, after, expected }) => {
   if (type !== "radar") return undefined;
   if (expected?.includes("STRING") && /\w\[[^"\]\n]+\]/.test(line)) {
@@ -800,10 +740,9 @@ const radarLabel: Rule = ({ type, line, after, expected }) => {
     : undefined;
 };
 
-/** Arrows of flowcharts that agent flows do not take. */
 const agentflowArrow: Rule = ({ type, line, column }) => {
   if (type !== "agentflow") return undefined;
-  // The run of arrow characters that the parser stopped in or right before.
+  // The arrow characters at the stop.
   let from = column;
   while (from > 0 && /[-=.<>]/.test(line[from - 1] as string)) from--;
   let to = column;
@@ -814,7 +753,6 @@ const agentflowArrow: Rule = ({ type, line, column }) => {
   return `Agent flow edges are -->, --x and -.-: ${fixed.trim()}.`;
 };
 
-/** An event model's name of several words. */
 const eventModelName: Rule = ({ type, line, column, after }) => {
   const frame =
     type === "eventmodeling" && /^\w/.test(after)
@@ -822,12 +760,12 @@ const eventModelName: Rule = ({ type, line, column, after }) => {
       : null;
   if (!frame) return undefined;
   const [, head = "", words = "", rest = ""] = frame;
-  // Only where the parser stopped in the words: a stop before them is another mistake.
+  // A stop before the words is another mistake.
   if (column < head.length || column >= head.length + words.length) return undefined;
   return `Names are one word: ${`${head.trim()} ${words.replace(/\s+/g, "")}${rest}`.trim()}.`;
 };
 
-/** The Cynefin domains, by their names in lowercase and the names of earlier versions. */
+// Including names of earlier versions.
 const CYNEFIN_DOMAINS: Record<string, string> = {
   complex: "complex",
   complicated: "complicated",
@@ -839,7 +777,6 @@ const CYNEFIN_DOMAINS: Record<string, string> = {
   disorder: "confusion",
 };
 
-/** A Cynefin domain by another name or in capitals, or an item without quotes. */
 const cynefinItem: Rule = ({ type, line, after }) => {
   if (type !== "cynefin" || after.trim() !== line.trim()) return undefined;
   const item = /^\s*([^"\s][^\n]*?)\s*$/.exec(line)?.[1];
@@ -850,7 +787,7 @@ const cynefinItem: Rule = ({ type, line, after }) => {
     : `Put the item in double quotes: "${item}".`;
 };
 
-/** A railroad rule without its final ";", which the parser stops at the next rule for. */
+// The parser stops at the next rule.
 const railroadSemicolon: Rule = ({ type, normalized, lineNumber, expected }) => {
   if (!type.startsWith("railroad") || !expected?.includes(";")) return undefined;
   const lines = normalized.split("\n");
@@ -864,7 +801,6 @@ const railroadSemicolon: Rule = ({ type, normalized, lineNumber, expected }) => 
   return undefined;
 };
 
-/** Wardley coordinates written as whole numbers. */
 const wardleyNumber: Rule = ({ type, line, expected }) => {
   if (type !== "wardley" || !expected?.includes("WARDLEY_NUMBER")) return undefined;
   const fixed = line.replace(/\[([^\]]*)\]/, (list) =>

@@ -1,5 +1,3 @@
-// Zoom controls for renderers with manual zoom support (currently Mermaid).
-
 import type { Renderer } from "./renderer";
 
 interface ZoomButtons {
@@ -10,9 +8,7 @@ interface ZoomButtons {
 
 const STEP = 1.25;
 
-/**
- * Connects buttons and browser-style Cmd/Ctrl +, - and 0 shortcuts to the active renderer.
- */
+// Buttons and Cmd/Ctrl +, - and 0.
 export function enableZoom(buttons: ZoomButtons, shown: () => Renderer | undefined): void {
   const zoomIn = () => shown()?.zoomBy?.(STEP);
   const zoomOut = () => shown()?.zoomBy?.(1 / STEP);
@@ -28,12 +24,11 @@ export function enableZoom(buttons: ZoomButtons, shown: () => Renderer | undefin
     "0": zoomReset,
   };
   const isMac = navigator.userAgent.includes("Mac");
-  // Expose the shortcuts to screen readers as well as in button titles.
   const primaryKey = isMac ? "Meta" : "Control";
   buttons.in.setAttribute("aria-keyshortcuts", `${primaryKey}+=`);
   buttons.out.setAttribute("aria-keyshortcuts", `${primaryKey}+-`);
   buttons.reset.setAttribute("aria-keyshortcuts", `${primaryKey}+0`);
-  // Capture before VS Code's listener forwards the shortcut to the host window.
+  // Capture before VS Code forwards the shortcut to the host window.
   window.addEventListener(
     "keydown",
     (event) => {

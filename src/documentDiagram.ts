@@ -10,12 +10,11 @@ import {
 import { baseName, contains, openDocument } from "./files";
 import { diagramNoun, errorMessage } from "./protocol";
 
-/** JSON-serializable document location and last-read fence, used to detect conflicting edits. */
+// The last-read fence detects conflicting edits.
 export interface DocumentBinding {
-  /** The document, as vscode.Uri.toString(). */
   uri: string;
   fence: DiagramFence;
-  /** Agent replacements retain the binding but require confirmation before writing. */
+  // By an agent: writing needs confirmation.
   replaced?: boolean;
 }
 
@@ -23,10 +22,9 @@ export function documentName({ uri }: DocumentBinding): string {
   return baseName(vscode.Uri.parse(uri));
 }
 
-/** The scheme of the URIs of notebook cells, which have the path of their notebook. */
+// Cell URIs have the path of their notebook.
 export const NOTEBOOK_CELL = "vscode-notebook-cell";
 
-/** The open notebook that holds a cell, as vscode.Uri.toString() gives it, and the cell's index. */
 export function openCell(
   uri: string,
 ): { notebook: vscode.NotebookDocument; index: number } | undefined {
@@ -38,10 +36,6 @@ export function openCell(
   return undefined;
 }
 
-/**
- * The notebook that holds a cell: the open one, or else the file at the cell's path in a workspace
- * folder. Other URIs are their own.
- */
 export function notebookOf(uri: vscode.Uri): vscode.Uri {
   if (uri.scheme !== NOTEBOOK_CELL) return uri;
   const open = openCell(uri.toString());
@@ -52,10 +46,7 @@ export function notebookOf(uri: vscode.Uri): vscode.Uri {
   return folder ? uri.with({ scheme: folder.uri.scheme, fragment: "" }) : uri;
 }
 
-/**
- * Opens the bound document. One that was never saved is found only while it is open, in a tab or
- * not yet disposed, as opening it after it was closed or saved elsewhere would make an empty one.
- */
+// An untitled document is found only while open: opening it again would make an empty one.
 async function openBound(binding: DocumentBinding): Promise<vscode.TextDocument> {
   const uri = vscode.Uri.parse(binding.uri);
   const isBound = (other: vscode.Uri) => other.toString() === binding.uri;
@@ -71,18 +62,13 @@ async function openBound(binding: DocumentBinding): Promise<vscode.TextDocument>
   return openDocument(uri);
 }
 
-/**
- * Whether VS Code keeps the document from being changed and saved, as far as an extension can tell:
- * on a read-only file system, such as a Git revision, by the files.readonlyInclude setting, or, with
- * files.readonlyFromPermissions, as the file may not be written. Not one made read-only for the
- * session, which VS Code does not tell extensions.
- */
+// As far as an extension can tell: VS Code does not tell of session read-only documents.
 export function isReadonly(document: vscode.TextDocument): boolean {
   const { uri } = document;
   if (vscode.workspace.fs.isWritableFileSystem(uri.scheme) === false) return true;
   if (document.isUntitled) return false;
   const settings = vscode.workspace.getConfiguration("files", document);
-  // Globs as VS Code matches them: of the path, or of the path within a workspace folder.
+  // Of the path, or of the path within a workspace folder, as VS Code matches them.
   const folders = vscode.workspace.workspaceFolders ?? [];
   const matches = (setting: string) =>
     Object.entries(settings.get<Record<string, unknown>>(setting) ?? {}).some(
@@ -105,14 +91,8 @@ export function isReadonly(document: vscode.TextDocument): boolean {
 
 type WriteOutcome = { written: true; fence: DiagramFence } | { written: false; reason: string };
 
-/**
- * Replaces an unchanged fence's content with an undoable workspace edit, preserving fence markers,
- * block quote markers, indentation and line endings. Refuses ambiguous or changed blocks, and
- * source that would not read back unchanged. isCurrent guards against panel changes while opening
- * the document. An edit that races with typing in the document is made again on what it holds now.
- * The document is left unsaved: VS Code opens one that no editor shows in a background tab, as
- * after a Replace All in Search, unless auto save saves it within a second.
- */
+// Refuses ambiguous or changed blocks, and source that would not read back unchanged. isCurrent
+// guards against panel changes while opening the document. Leaves the document unsaved.
 export async function writeFence(
   binding: DocumentBinding,
   source: string,
@@ -120,7 +100,6 @@ export async function writeFence(
 ): Promise<WriteOutcome> {
   const name = documentName(binding);
   const noun = diagramNoun(binding.fence.language);
-  // Written as a fence is read: no blank lines around the diagram.
   const diagram = trimBlankLines(source.split(/\r\n|\r|\n/));
   if (!diagram) {
     return { written: false, reason: `There is no ${noun} to write to ${name}.` };
@@ -156,8 +135,7 @@ export async function writeFence(
       return { written: true, fence };
     }
     const eol = document.eol === vscode.EndOfLine.CRLF ? "\r\n" : "\n";
-    // The scan read this text, so the replacement is located in the text rather than in VS Code's
-    // lines, whatever either makes of unusual line breaks.
+    // In the text the scan read rather than VS Code's lines, which may split unusual breaks.
     const rewrite = rewriteFence(document.getText(), fence, diagram, eol);
     if (!rewrite) {
       return changed;
@@ -192,8 +170,7 @@ export async function writeFence(
         reason: `Could not write the ${noun} to ${name}: VS Code refused the edit. Check that the file is not read-only.`,
       };
     }
-    // VS Code refuses an edit of a document that changed after the edit was made, as when the user
-    // types meanwhile. Find the block again in what the document holds now.
+    // VS Code refuses an edit of a document that changed meanwhile: find the block again.
     if (attempt === MAX_WRITE_ATTEMPTS) {
       return {
         written: false,
@@ -203,13 +180,9 @@ export async function writeFence(
   }
 }
 
-/** How often a write is tried while the document changes under it. */
 const MAX_WRITE_ATTEMPTS = 3;
 
-/**
- * Confirms writing to the original document a diagram that an agent changed, or that JavaScript
- * code from a chart in the panel may have edited or asked to write.
- */
+// For diagrams an agent changed, or chart code may have edited or asked to write.
 export async function confirmWrite(
   binding: DocumentBinding,
   cause: "replaced" | "code",
@@ -231,10 +204,7 @@ export async function confirmWrite(
   return write !== undefined;
 }
 
-/**
- * Reports a failed write and offers to open the original block, or to copy the source that was not
- * written, to paste it there, as reopening the block replaces it in the panel.
- */
+// Offers to copy the source, as reopening the block replaces it in the panel.
 export async function reportWriteFailure(
   binding: DocumentBinding,
   reason: string,
@@ -254,7 +224,6 @@ export async function reportWriteFailure(
   }
 }
 
-/** Opens the bound document at its block, saying why if it cannot. */
 async function showBlock(binding: DocumentBinding): Promise<void> {
   try {
     const document = await openBound(binding);

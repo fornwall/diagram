@@ -1,6 +1,6 @@
-// Shared spatial keyboard navigation for Mermaid and ECharts, independent of the DOM.
+// Spatial keyboard navigation for Mermaid and ECharts.
 
-/** A position in pixels: x to the right, y down. */
+// Pixels, y down.
 export type Point = readonly [x: number, y: number];
 
 const DIRECTIONS: Partial<Record<string, Point>> = {
@@ -10,13 +10,10 @@ const DIRECTIONS: Partial<Record<string, Point>> = {
   ArrowUp: [0, -1],
 };
 
-/** The unit vector of an arrow key, or undefined for any other key. */
 export const arrowDirection = (key: string): Point | undefined => DIRECTIONS[key];
 
-/**
- * Finds the nearest candidate in a direction, penalizing sideways distance. Coincident points
- * follow iteration order: right/down moves forward, left/up moves backward.
- */
+// Penalizes sideways distance. Coincident points are visited in order going right/down,
+// in reverse going left/up.
 export function nearestInDirection<T>(
   from: T,
   [dx, dy]: Point,
@@ -49,7 +46,6 @@ export function nearestInDirection<T>(
     const ahead = (cx - x) * dx + (cy - y) * dy;
     const aside = Math.abs((cx - x) * dy) + Math.abs((cy - y) * dx);
     const score = ahead + 2 * aside;
-    // Of several at one place, enter at the first going forward, and at the last going back.
     if (ahead > 0.5 && (score < bestScore || (!forward && score === bestScore))) {
       best = candidate;
       bestScore = score;

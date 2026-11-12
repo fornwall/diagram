@@ -1,25 +1,17 @@
-// Mermaid lays out flowcharts and most other graphs with elk, its default layout, which is a large
-// module of its own that Mermaid loads only once it has loaded the diagram's code and parsed it.
+// Mermaid loads elk, its default layout, only after loading and parsing the diagram's code.
 
 /// <reference path="./elkLayout.d.ts" />
 
-/**
- * The diagrams that Mermaid lays out with its default layout, by the start of their type, as its
- * detectors tell them apart. (flowchart-elk is laid out with elk whatever the default.)
- */
+// By type prefix. flowchart-elk always uses elk.
 const DEFAULT_LAYOUT_DIAGRAMS =
   /^(?:graph|flowchart|classDiagram|stateDiagram|erDiagram|requirement|agentflow-beta\b|usecase-beta\b)/;
 
-/** A layout that front matter or a directive sets, in YAML or JSON. */
+// In YAML or JSON.
 const LAYOUT_SETTING = /\blayout["']?\s*:\s*["']?([\w.-]+)/;
 
-/** A directive, as %%{init: {"theme": "forest"}}%%, which Mermaid reads anywhere in the source. */
+// Mermaid reads directives anywhere.
 const DIRECTIVE = /%%\{[\s\S]*?\}%%/g;
 
-/**
- * The settings that a diagram's front matter and directives may make, and the line after the front
- * matter and the directives and comments before it that names its type, if any.
- */
 export function diagramHeader(source: string): { settings: string; typeLine: string | undefined } {
   const lines = source.split(/\r\n?|\n/, 1000);
   let settings = "";
@@ -48,10 +40,7 @@ export function diagramHeader(source: string): { settings: string; typeLine: str
   return { settings, typeLine: undefined };
 }
 
-/**
- * Whether Mermaid will likely lay out the diagram with elk: a guess from the type of the diagram,
- * after its front matter, directives and comments, and the layout that those may set.
- */
+// A guess.
 export function laidOutWithElk(source: string): boolean {
   const { settings, typeLine } = diagramHeader(source);
   if (typeLine === undefined) return false;
@@ -59,10 +48,7 @@ export function laidOutWithElk(source: string): boolean {
   return layout ? layout.startsWith("elk") : DEFAULT_LAYOUT_DIAGRAMS.test(typeLine);
 }
 
-/**
- * Starts loading the elk layout for a diagram that Mermaid will likely lay it out with, alongside
- * Mermaid rather than after it, as Mermaid would.
- */
+// Alongside Mermaid rather than after it.
 export function preloadLayout(source: string): void {
   if (laidOutWithElk(source)) {
     import("mermaid-elk-layout").catch(() => {

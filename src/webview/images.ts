@@ -1,28 +1,19 @@
-// Images of the drawing as they leave the panel: SVG, which svgImage.ts makes, and PNG drawn
-// from it.
-
 import type { ImageView } from "../protocol";
 
-/** A rendering as an image, ready to leave the panel. */
 export interface DiagramImage {
-  /** Standalone SVG markup: no panel stylesheet, no CSS variables, no interaction attributes. */
+  // Standalone: no panel stylesheet, CSS variables or interaction attributes.
   svg: string;
-  /** The size the SVG draws at, in CSS pixels, which the PNG is a multiple of. */
+  // CSS pixels.
   width: number;
   height: number;
 }
 
-/** An image for a model, and what it shows, but for the scale, which the PNG of it decides. */
 export interface ModelImage {
   image: DiagramImage;
   view: Omit<ImageView, "scale">;
 }
 
-/**
- * How many pixels high an image for a model draws most text, as far as its size allows: enough for
- * the model to read it, without the pixels of a larger image, which cost the model time and input.
- * The drawing is not drawn smaller than it is to get there.
- */
+// Text height in pixels for a model to read; larger images cost it time and input.
 export const MODEL_TEXT_SIZE = 16;
 
 const PNG_SCALE = 2;
@@ -30,19 +21,17 @@ const MAX_PNG_SIDE = 8000;
 // Bound both dimensions and total pixels: an 8000² canvas alone occupies 256 MB.
 const MAX_PNG_PIXELS = 16_000_000;
 
-/** Percent encoding preserves Unicode labels without a Latin-1 base64 conversion. */
+// Percent encoding keeps Unicode labels, unlike Latin-1 base64.
 export function svgDataUrl(svg: string): string {
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg.toWellFormed())}`;
 }
 
-/** The most pixels a PNG may have on either side and in all, and for each pixel of the drawing. */
 export interface PngLimits {
   maxSide?: number | undefined;
   maxPixels?: number | undefined;
   maxScale?: number | undefined;
 }
 
-/** How many pixels of a PNG of the image within the limits make a pixel of the drawing. */
 export function pngScale(
   { width, height }: Pick<DiagramImage, "width" | "height">,
   { maxSide = MAX_PNG_SIDE, maxPixels = MAX_PNG_PIXELS, maxScale = PNG_SCALE }: PngLimits = {},
@@ -55,13 +44,10 @@ export function pngScale(
   );
 }
 
-/**
- * The SVG animations of markup that XMLSerializer wrote, which escapes "<" and ">" elsewhere: those
- * of a flowchart's steps, which a PNG would show at their first moment, the first edge highlighted.
- */
+// Flowchart step animations, which a PNG would freeze at the first step. XMLSerializer escapes
+// "<" and ">" elsewhere.
 const ANIMATION = /<(animate(?:Motion|Transform)?|set)\b(?:[^>]*\/>|[^>]*>[\s\S]*?<\/\1>)/g;
 
-/** Rasterizes self-contained SVG, at rest and at most as large as the limits allow. */
 export async function pngDataUrl(drawing: DiagramImage, limits?: PngLimits): Promise<string> {
   const { width, height } = drawing;
   const svg = drawing.svg.replace(ANIMATION, "");
@@ -74,7 +60,7 @@ export async function pngDataUrl(drawing: DiagramImage, limits?: PngLimits): Pro
   let blob: Blob | null;
   try {
     image.src = svgDataUrl(svg);
-    // Its only error, an EncodingError, says that "the source image cannot be decoded".
+    // Its only error, an EncodingError, says nothing useful.
     await image.decode().catch(() => {
       throw new Error("The browser could not read the SVG image to draw the PNG from.");
     });
@@ -110,14 +96,10 @@ export async function pngDataUrl(drawing: DiagramImage, limits?: PngLimits): Pro
   });
 }
 
-/** The end of the signature and the header chunk, which every PNG starts with. */
+// After the signature and IHDR chunk.
 const PNG_HEADER_END = 33;
 
-/**
- * Adds a pHYs chunk to a PNG that has none, saying that `scale` pixels make a CSS pixel, 1/96 of an
- * inch. Word processors, presentations and macOS Preview then show an image that is twice as
- * sharp as the drawing at the drawing's size instead of twice as large.
- */
+// A pHYs chunk makes word processors and macOS Preview show a 2x image sharper, not larger.
 async function withResolution(png: Blob, scale: number): Promise<Blob> {
   const bytes = new Uint8Array(await png.arrayBuffer());
   const type = (start: number) => String.fromCharCode(...bytes.subarray(start, start + 4));
@@ -142,7 +124,6 @@ async function withResolution(png: Blob, scale: number): Promise<Blob> {
   });
 }
 
-/** The CRC-32 that ends a PNG chunk, computed over its type and data. */
 function crc32(bytes: Uint8Array): number {
   let crc = 0xffffffff;
   for (const byte of bytes) {

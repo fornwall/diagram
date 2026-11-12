@@ -1,5 +1,3 @@
-// Owns the webview tab and validates messages sent to the extension host.
-
 import * as vscode from "vscode";
 import { errorMessage, type FromWebview, isFromWebview, type ToWebview } from "./protocol";
 import { loadWebview } from "./webviewHtml";
@@ -8,11 +6,8 @@ export class WebviewChannel implements vscode.Disposable {
   static readonly viewType = "diagram.panel";
 
   private panel: vscode.WebviewPanel | undefined;
-  /**
-   * The panel replays state on "ready", so earlier messages can be dropped. Track generations
-   * to ignore delivery failures from old pages. VS Code can also reload a page itself, such as
-   * when its tab moves to another window; "ready" is the only notification in that case.
-   */
+  // The panel replays state on "ready", so earlier messages can be dropped. VS Code may reload a
+  // page itself, as when its tab moves to another window; "ready" is the only notice of that.
   private ready = false;
   private generation = 0;
 
@@ -22,17 +17,15 @@ export class WebviewChannel implements vscode.Disposable {
     private readonly onClose: () => void,
   ) {}
 
-  /** The open tab, if any. A tab that is closed and opened again is a new one. */
   get tab(): vscode.WebviewPanel | undefined {
     return this.panel;
   }
 
-  /** Whether the page has loaded and takes messages. */
   get isReady(): boolean {
     return this.ready;
   }
 
-  /** Reveals the tab, or opens it, in which case this returns true. */
+  // True if it opened the tab.
   reveal(preserveFocus: boolean): boolean {
     if (this.panel) {
       if (!preserveFocus || !this.panel.visible) {
@@ -40,8 +33,7 @@ export class WebviewChannel implements vscode.Disposable {
       }
       return false;
     }
-    // VS Code restores background tabs lazily after a window reload. Replace an unrestored tab
-    // to avoid duplicates. Accept both the API's view type and VS Code's internal prefix.
+    // VS Code restores background tabs lazily after a reload: replace unrestored ones.
     const viewTypes = [WebviewChannel.viewType, `mainThreadWebview-${WebviewChannel.viewType}`];
     const leftovers = vscode.window.tabGroups.all
       .flatMap((group) => group.tabs)
@@ -60,12 +52,10 @@ export class WebviewChannel implements vscode.Disposable {
       { retainContextWhenHidden: true, enableFindWidget: true },
     );
     this.attach(panel);
-    // Failure to close an old tab does not prevent using the new one.
     vscode.window.tabGroups.close(leftovers, true).then(undefined, () => {});
     return true;
   }
 
-  /** Takes over a tab restored by VS Code after a reload, unless one is open already. */
   adopt(panel: vscode.WebviewPanel): boolean {
     if (this.panel) {
       panel.dispose();
@@ -80,7 +70,7 @@ export class WebviewChannel implements vscode.Disposable {
     panel.iconPath = new vscode.ThemeIcon("type-hierarchy");
     this.load(panel);
 
-    // The webview renders content written by a model, so do not trust what it sends.
+    // The webview renders model-written content: do not trust what it sends.
     const messageListener = panel.webview.onDidReceiveMessage((message: unknown) => {
       if (!isFromWebview(message)) return undefined;
       if (message.type === "ready") {
@@ -115,10 +105,7 @@ export class WebviewChannel implements vscode.Disposable {
     loadWebview(panel.webview, this.extensionUri);
   }
 
-  /**
-   * Return a delivery error only if the same page is still active. Reloads replay requests with
-   * the same ids, so a stale failure must not cancel the new attempt.
-   */
+  // Errors only for the same page: reloads replay requests with the same ids.
   async post(message: ToWebview): Promise<string | undefined> {
     const panel = this.panel;
     if (!this.ready || !panel) {

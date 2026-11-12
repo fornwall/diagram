@@ -1,15 +1,10 @@
-// Resolving and decoding the files that users and models name.
-
 import { lstatSync, readlinkSync, realpathSync } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { errorMessage } from "./protocol";
 
-/**
- * Whether `uri` is `root` or inside it, on the same file system. A path with "." or ".." segments
- * is never inside, as it could lead out of the root.
- */
+// A path with "." or ".." segments is never inside, as it could lead out.
 export function contains(root: vscode.Uri, uri: vscode.Uri): boolean {
   return (
     // Providers may run on Windows even when this extension host does not.
@@ -23,11 +18,8 @@ export function contains(root: vscode.Uri, uri: vscode.Uri): boolean {
   );
 }
 
-/**
- * The path of `root`, a folder on a virtual file system, without a trailing "/", and with "." and
- * ".." taken by their text, as Uri.joinPath does, as such file systems have no links. VS Code keeps
- * them from a folder's "uri" in a workspace file.
- */
+// VS Code keeps "." and ".." from a workspace file's folder "uri". Virtual file systems have no
+// links, so resolve them by text.
 function virtualFolderPath(root: vscode.Uri): string {
   return root.path && path.posix.normalize(root.path).replace(/\/$/, "");
 }
@@ -40,12 +32,8 @@ function withinPath(root: string, file: string): boolean {
   );
 }
 
-/**
- * Whether `uri` is inside `root` by its path, also where it names the folders up to `root` in other
- * case or Unicode normalization that their file systems ignore, as on macOS and Windows by default.
- * Only such paths are resolved on the file system before the user is asked, as resolving any other
- * could reach a network share, sending the user's credentials, or hang on an unreachable mount.
- */
+// Also in other case or Unicode normalization, as macOS and Windows ignore. Only such paths are
+// resolved before asking the user: others could reach a network share or an unreachable mount.
 function nearRoot(root: vscode.Uri, uri: vscode.Uri): boolean {
   const folded = (uri: vscode.Uri) =>
     uri.with({
@@ -60,13 +48,8 @@ function nearRoot(root: vscode.Uri, uri: vscode.Uri): boolean {
   );
 }
 
-/**
- * Whether `file`, which names the folder `root` or a file in it in other case or normalization,
- * leads into that folder: whether each folder on the way to `root` finds the same entry by the name
- * as typed, which is not followed if it is a link, as one on a case-sensitive file system could
- * lead to a network share. Windows is taken to ignore case, as path.relative does, though its
- * folders can be made case-sensitive.
- */
+// Whether each folder up to `root` finds the same entry by the name as typed, without following
+// links, which could lead to a network share. Windows is taken to ignore case, as path.relative.
 function namesFolder(root: string, file: string): boolean {
   const names = path.resolve(root).split(path.sep);
   const typed = path.resolve(file).split(path.sep);
@@ -89,12 +72,8 @@ function namesFolder(root: string, file: string): boolean {
   });
 }
 
-/**
- * Whether `uri` is inside a workspace folder, by its path and once symbolic links on this computer
- * are followed, as one inside could lead out. A path that does not resolve for a missing name or
- * too many links goes by its path, as nothing can be read through it. Virtual file systems have no
- * links to follow.
- */
+// Also with links followed, which could lead out. A path that does not resolve goes by its path,
+// as nothing can be read through it.
 export function inWorkspace(
   uri: vscode.Uri,
   roots: readonly vscode.WorkspaceFolder[] = vscode.workspace.workspaceFolders ?? [],
@@ -104,7 +83,6 @@ export function inWorkspace(
     try {
       return followLinks(uri.fsPath, roots) === true;
     } catch (error) {
-      // Other errors, as for a real path too long to name, need not stop the system.
       const code = (error as NodeJS.ErrnoException).code;
       if (code !== "ENOENT" && code !== "ENOTDIR" && code !== "ELOOP") return false;
     }
@@ -112,10 +90,6 @@ export function inWorkspace(
   return roots.some((root) => contains(root.uri, uri));
 }
 
-/**
- * The path by which `uri`, inside a workspace folder by its path, leads out of the folders through
- * symbolic links, as {@link linksInside} tells, if it does and that path is known.
- */
 export function pathOutside(uri: vscode.Uri): string | undefined {
   const roots = vscode.workspace.workspaceFolders ?? [];
   if (uri.scheme !== "file" || !roots.some((root) => nearRoot(root.uri, uri))) return undefined;
@@ -127,7 +101,6 @@ export function pathOutside(uri: vscode.Uri): string | undefined {
   }
 }
 
-/** {@link linksInside} for a local `file`, reading each link as it goes. */
 function followLinks(file: string, roots: readonly vscode.WorkspaceFolder[]): boolean | string {
   const local = roots
     .filter(({ uri }) => uri.scheme === "file")
@@ -153,26 +126,15 @@ function followLinks(file: string, roots: readonly vscode.WorkspaceFolder[]): bo
   return step.value;
 }
 
-/**
- * A workspace folder on this computer, by its path without "." and "..", which VS Code keeps from a
- * folder's "uri" in a workspace file but not in the names of files in it, and by its real path, or
- * the error for a folder that has none, from which nothing is followed: ".." steps up from a real
- * path.
- */
+// A folder's path without "." and "..", and its real path, from which ".." steps up.
 type LocalRoot = readonly [file: string, real: string | Error];
 
-/** The names in a path, without "." and empty ones, by the rules `p` of its system. */
 function names(file: string, p: typeof path.posix = path): string[] {
   return file.split(p.sep === "/" ? "/" : /[\\/]/).filter((name) => name && name !== ".");
 }
 
-/**
- * How a symbolic link's `target` continues from `dir`, the real folder the link is in, by the path
- * rules `p` of its system: the folder by its path that an absolute target starts in, if any, and
- * the names to follow from there or from `dir`. A target that Windows may take by its text is
- * named by the path it leads to by its text instead, and one that is relative to the current folder
- * of a drive, which is not known, is undefined.
- */
+// Where an absolute target starts, if any, and the names to follow from there or from `dir`.
+// Undefined for a target relative to a drive's unknown current folder.
 export function linkTarget(
   target: string,
   dir: string,
@@ -198,22 +160,10 @@ export function linkTarget(
   return { start: p.join(root, ...parts.slice(0, start)), names: parts.slice(start) };
 }
 
-/**
- * Follows the symbolic links in `file`, a path inside a workspace folder, one name at a time from
- * the folder's real path, and returns true if it ends inside one, else the path by which it leads
- * out, unresolved past the folders, when it is known. It yields each path to read as a
- * link, which is inside, and takes the link's target, or undefined for no link. A target outside
- * every folder by its path, as {@link nearRoot} tells, is never touched, as it could be on a network
- * share or an unreachable mount.
- *
- * A target is never resolved by its text, as the system follows "b/../key" to the folder above
- * where the link b leads. Its names are followed one at a time, as those of `file` are, and ".."
- * steps up from the real path reached so far. That may leave the folders, as "../two" does from a
- * folder beside two, when the next name leads back in.
- *
- * @throws Error when a name is missing, or for too many links, as realpath does, or for a folder
- * without a real path.
- */
+// Follows links one name at a time, yielding each path inside to read as a link. Returns true if
+// it ends inside, else the path out, if known. Targets outside every folder are never touched, as
+// they could be on a network share or an unreachable mount. Targets are not resolved by text, as
+// the system follows "b/../key" from where b leads. Throws as realpath does.
 function* linksInside(
   file: string,
   roots: readonly LocalRoot[],
@@ -260,7 +210,7 @@ function* linksInside(
       });
     }
     const text = link.toString();
-    // A string names no target that is not UTF-8, as the file system takes it in UTF-8.
+    // The file system takes strings in UTF-8.
     if (!Buffer.from(text).equals(link)) return false;
     const target = linkTarget(text, dir);
     if (!target) return false;
@@ -273,17 +223,13 @@ function* linksInside(
   return inside(dir) || dir;
 }
 
-/** No target for a path that is no symbolic link, and rethrows other errors. */
 function noLink(error: unknown): undefined {
   if ((error as NodeJS.ErrnoException).code !== "EINVAL") throw error;
   return undefined;
 }
 
-/**
- * Resolves an absolute path on the file system of the workspace folders that contain it, such as
- * that of a GitHub repository opened with Remote Repositories, when they are all on one. Other
- * paths are on this computer, without "." and "..", which getWorkspaceFolder would take as names.
- */
+// On the workspace folders' file system, such as Remote Repositories', when all are on one.
+// getWorkspaceFolder would take "." and ".." as names.
 export function absoluteFile(
   file: string,
   roots: readonly vscode.WorkspaceFolder[] = vscode.workspace.workspaceFolders ?? [],
@@ -306,7 +252,6 @@ export function absoluteFile(
   return only && others.length === 0 ? only : local;
 }
 
-/** The absolute path that names `uri`, as {@link absoluteFile} resolves it back, if one does. */
 export function absolutePath(
   uri: vscode.Uri,
   roots?: readonly vscode.WorkspaceFolder[],
@@ -317,13 +262,7 @@ export function absolutePath(
   return absoluteFile(uri.path, roots).toString() === uri.toString() ? uri.path : undefined;
 }
 
-/**
- * Resolves a path as given in a chart spec or a node link: "~" and "~/…", or on Windows "~\…",
- * relative to the home directory, absolute paths as {@link absoluteFile} does, and other paths
- * relative to the first workspace folder.
- *
- * @throws Error when the path is relative but no workspace folder is open.
- */
+// "~" is the home directory; relative paths are in the first workspace folder.
 export function resolveFile(file: string): vscode.Uri {
   if (
     file === "~" ||
@@ -345,29 +284,17 @@ export function resolveFile(file: string): vscode.Uri {
   return vscode.Uri.joinPath(folder.uri, file);
 }
 
-/** The UTF-16 encoding whose byte order mark `bytes` start with, if any. */
 function utf16(bytes: Uint8Array): "utf-16le" | "utf-16be" | undefined {
   if (bytes[0] === 0xff && bytes[1] === 0xfe) return "utf-16le";
   return bytes[0] === 0xfe && bytes[1] === 0xff ? "utf-16be" : undefined;
 }
 
-/**
- * Decodes UTF-16 when the bytes start with its byte order mark, as files that PowerShell writes
- * with > do, and UTF-8 otherwise.
- *
- * @param fatal Whether invalid bytes throw, rather than becoming "\uFFFD".
- * @throws TypeError when `fatal` and the bytes are not valid in that encoding.
- */
+// UTF-16 with a byte order mark, as PowerShell's > writes, else UTF-8.
 function decodeText(bytes: Uint8Array, fatal = true): string {
   return new TextDecoder(utf16(bytes) ?? "utf-8", { fatal }).decode(bytes);
 }
 
-/**
- * Decodes a file's bytes with {@link decodeText} or else in the encoding that the editor would
- * open the file in, as files.encoding sets.
- *
- * @throws Error when the editor finds the file binary.
- */
+// Else in the editor's encoding for the file. Throws for binary files.
 export async function decodeFile(bytes: Uint8Array, uri: vscode.Uri): Promise<string> {
   try {
     return decodeText(bytes);
@@ -376,7 +303,6 @@ export async function decodeFile(bytes: Uint8Array, uri: vscode.Uri): Promise<st
   }
 }
 
-/** The file system errors that are explained, by vscode.FileSystemError code. */
 const EXPLANATIONS = {
   FileNotFound: (name: string) => `${name} does not exist.`,
   FileIsADirectory: (name: string) => `${name} is a folder, not a file.`,
@@ -387,7 +313,6 @@ const EXPLANATIONS = {
 };
 type FileErrorCode = keyof typeof EXPLANATIONS;
 
-/** Node.js errors, as fs.realpath throws, by their vscode.FileSystemError code. */
 const NODE_CODES: Record<string, FileErrorCode> = {
   ENOENT: "FileNotFound",
   EISDIR: "FileIsADirectory",
@@ -396,26 +321,18 @@ const NODE_CODES: Record<string, FileErrorCode> = {
   EPERM: "NoPermissions",
 };
 
-/** The last name in the path of `uri`, as titles name a file. */
 export function baseName(uri: vscode.Uri): string {
   return uri.path.split("/").pop() || uri.path;
 }
 
-/**
- * How messages name a file: relative to its workspace folder, else by its path, or by its URI
- * outside the workspace in a virtual file system, where a path alone does not tell which file.
- */
+// By URI outside the workspace in a virtual file system, where a path is ambiguous.
 export function fileName(uri: vscode.Uri): string {
   return uri.scheme === "file" || vscode.workspace.getWorkspaceFolder(uri)
     ? vscode.workspace.asRelativePath(uri)
     : uri.toString(true);
 }
 
-/**
- * Says in one sentence why `uri` could not be read, naming it once by {@link fileName}, followed by
- * the hint for the error's code, if any. An unknown error is told by its message, without the file
- * names that VS Code and Node.js repeat in it.
- */
+// Names the file once, though VS Code and Node.js repeat it in messages.
 function explain(
   code: string | undefined,
   message: string,
@@ -439,11 +356,7 @@ function explain(
   return new Error(`${name} could not be read${detail ? `: ${detail}` : ""}.`);
 }
 
-/**
- * Explains why `uri` could not be read, if `error` is a vscode.FileSystemError or a Node.js file
- * error, with the hint for its code, if any. Other errors, such as cancellation, are returned as
- * they are.
- */
+// Other errors, such as cancellation, are returned as they are.
 export function fileError(
   error: unknown,
   uri: vscode.Uri,
@@ -464,14 +377,12 @@ export function fileError(
   return error;
 }
 
-/** Opens a text document, or throws an Error that says why it cannot, naming it once. */
 export async function openDocument(uri: vscode.Uri): Promise<vscode.TextDocument> {
   try {
     return await vscode.workspace.openTextDocument(uri);
   } catch (error) {
-    // openTextDocument gives the file system error in its localized message only, so ask the
-    // file system why, and else read the error's unlocalized name, as in
-    // "(NoPermissions (FileSystemError): …)".
+    // openTextDocument only gives a localized message: ask the file system why, or else read the
+    // unlocalized name, as in "(NoPermissions (FileSystemError): …)".
     const stat = await Promise.resolve(vscode.workspace.fs.stat(uri)).catch((cause) => cause);
     if (stat instanceof vscode.FileSystemError) {
       throw fileError(stat, uri);

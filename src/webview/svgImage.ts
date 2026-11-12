@@ -1,49 +1,32 @@
-// Self-contained SVG images of a drawing in the panel, to export or to drag into other
-// applications.
-
 import type { DiagramImage } from "./images";
 
 export const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
-/** The namespace of the targets of links that SVG draws, as Mermaid writes them. */
 export const XLINK_NAMESPACE = "http://www.w3.org/1999/xlink";
 
-/** Where a link leads, as HTML or SVG writes it, if it has a target at all. */
 export const hrefOf = (link: Element): string | null =>
   link.getAttribute("href") ?? link.getAttributeNS(XLINK_NAMESPACE, "href");
 
-/** Attributes that only make the rendering interactive in the panel, which an image does not need. */
 const INTERACTION_ATTRIBUTES = ["tabindex", "role", "aria-pressed", "data-diagram-id"];
 
-/** What XML 1.0 does not allow in a document, not even as a character reference. */
+// Not even as character references.
 const NOT_IN_XML = /[^\t\n\r\u0020-\uD7FF\uE000-\uFFFD\u{10000}-\u{10FFFF}]/gu;
 
-/** An HTML label but for a formula, whose text would be its TeX. */
+// Not formulas, whose text is TeX.
 const HTML_LABEL = "foreignObject:not(:has(math))";
 const HTML_LABEL_WITH_FALLBACK = `switch > ${HTML_LABEL}`;
 
-/** A computed color that paints nothing. */
 const TRANSPARENT = /^rgba\([^)]*,\s*0\)$/;
 
-/** The font properties that an HTML label's text keeps as SVG text. */
 const FONT = ["font-family", "font-size", "font-style", "font-weight", "letter-spacing"];
-/** Where the ascent and descent of fonts are measured. */
 let fonts: CanvasRenderingContext2D | null | undefined;
 
-/**
- * The text of an HTML label in the document as SVG text, a text element for each piece of a text
- * node on a line, where the browser lays it out: wrapped, aligned and styled as it shows it, on the
- * backgrounds that its HTML paints, such as an edge label's. Undefined if it shows none.
- */
+// Placed as the browser lays it out: a text element for each line of each text node.
 function labelAsText(label: SVGForeignObjectElement): SVGGElement | undefined {
   fonts ??= document.createElement("canvas").getContext("2d");
   const toUser = label.getScreenCTM()?.inverse();
   if (!toUser || !fonts) return undefined;
   const measure = fonts;
-  /**
-   * Where a box in the document is in the label's units, which its font size is in: its left, its
-   * middle and its size, along the lines of a label that the drawing turns, such as a vertical lane
-   * title.
-   */
+  // In the label's units, along its lines, which the drawing may turn, as a vertical lane title.
   const place = ({ left, top, right, bottom }: DOMRect) => {
     const corners = [
       [left, top],
@@ -61,7 +44,6 @@ function labelAsText(label: SVGForeignObjectElement): SVGGElement | undefined {
   for (const element of label.querySelectorAll("*")) {
     const color = getComputedStyle(element).backgroundColor;
     if (TRANSPARENT.test(color)) continue;
-    // A box for each line of an element on several.
     for (const box of element.getClientRects()) {
       const { x, middle, width, height } = place(box);
       if (!width || !height) continue;
@@ -82,7 +64,6 @@ function labelAsText(label: SVGForeignObjectElement): SVGGElement | undefined {
     let run: { text: string; x: number; middle: number } | undefined;
     const end = () => {
       if (!run) return;
-      // The baseline, with the font's ascent and descent around the middle of the line.
       measure.font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
       const { fontBoundingBoxAscent: ascent, fontBoundingBoxDescent: descent } =
         measure.measureText("");
@@ -91,8 +72,7 @@ function labelAsText(label: SVGForeignObjectElement): SVGGElement | undefined {
       element.setAttribute("y", String(run.middle + (ascent - descent) / 2));
       for (const name of FONT) element.style.setProperty(name, style.getPropertyValue(name));
       element.style.fill = style.color;
-      // From where the line starts, on its baseline, whatever the drawing's style sheet says of
-      // the text of labels, such as a flowchart's, which centers it.
+      // Override the style sheet's centering, as of flowchart labels.
       element.style.textAnchor = "start";
       element.style.dominantBaseline = "auto";
       element.textContent = run.text.trimEnd();
@@ -105,7 +85,7 @@ function labelAsText(label: SVGForeignObjectElement): SVGGElement | undefined {
       i += char.length;
       range.setEnd(node, i);
       const box = place(range.getBoundingClientRect());
-      // Whitespace that the browser collapses has no width; a line starts with none.
+      // Collapsed whitespace has no width.
       if (!box.width || (!run && !char.trim())) continue;
       if (run && Math.abs(box.middle - run.middle) > box.height / 2) end();
       run ??= { text: "", x: box.x, middle: box.middle };
@@ -117,40 +97,25 @@ function labelAsText(label: SVGForeignObjectElement): SVGGElement | undefined {
   return group.childElementCount > backgrounds ? group : undefined;
 }
 
-/**
- * A computed value as applications that read SVG 1.1 also know it: they may not read a
- * transparent color, which would paint black.
- */
+// SVG 1.1 readers may paint transparent colors black.
 function portable(property: string, value: string): string {
   return (property === "fill" || property === "stroke") && value === "rgba(0, 0, 0, 0)"
     ? "none"
     : value;
 }
 
-/**
- * A quoted url() of an element in the image, as a style attribute that CSSOM wrote holds it in
- * markup, which applications that read SVG 1.1 may not read: CSSOM quotes it whatever it is given.
- */
+// CSSOM always quotes url(), which SVG 1.1 readers may not read.
 const QUOTED_URL = /url\(&quot;(#[^&()\s]+)&quot;\)/g;
 
-/**
- * Writes what the drawing's style sheets give each element into its style attribute, and leaves
- * the sheets only the keyframes of its animations. Mermaid styles its drawings with rules such as
- * `#id .node rect`, which applications that read SVG without a browser engine may ignore, misread
- * or fail to parse, such as Illustrator, Figma, Office and older Inkscape: shapes come out black.
- * Every one of them reads a style attribute. The drawing must be in the document to be styled.
- *
- * The root keeps no style, as standaloneSvg drops it: its children are given what it passes on.
- */
+// Mermaid's rules, such as `#id .node rect`, may be ignored by Illustrator, Figma, Office and older
+// Inkscape, which draw shapes black, but all read style attributes. Keeps only the keyframes.
 export function inlineStyleSheets(svg: SVGSVGElement): void {
-  // Style the drawing as it is drawn on its own, inheriting nothing from the panel, such as its
-  // font, which Mermaid draws in too: its rule for the font would otherwise seem to change nothing.
-  // Only its color stays, which standaloneSvg gives the image.
+  // Inherit nothing from the panel, such as its font, which would hide Mermaid's font rule.
   const isolated = document.createElement("div");
   isolated.style.all = "initial";
   isolated.style.color = getComputedStyle(svg).color;
   svg.replaceWith(isolated);
-  // Moving a style element parses its sheet anew: read the sheets where they now are.
+  // Moving a style element parses its sheet anew.
   isolated.append(svg);
   try {
     const sheets = [...svg.querySelectorAll("style")].flatMap((style) => style.sheet ?? []);
@@ -159,7 +124,6 @@ export function inlineStyleSheets(svg: SVGSVGElement): void {
     const onRoot = new Set<string>();
     for (const rule of rules) {
       if (!(rule instanceof CSSStyleRule)) continue;
-      // Custom properties are resolved where they are used.
       const names = [...rule.style].filter((name) => !name.startsWith("--"));
       for (const name of names) declared.add(name);
       if (svg.matches(rule.selectorText)) for (const name of names) onRoot.add(name);
@@ -173,8 +137,8 @@ export function inlineStyleSheets(svg: SVGSVGElement): void {
       return properties.map((name) => style.getPropertyValue(name));
     });
     for (const sheet of sheets) sheet.disabled = true;
-    // In document order, so that each element inherits what its parent was given. What the root
-    // passes on, such as Mermaid's font size, must not come from where the image is put instead.
+    // In document order, so that each element inherits its parent's. standaloneSvg drops the
+    // root's style, so its children get what it passes on, such as Mermaid's font size.
     elements.forEach((element, index) => {
       const style = getComputedStyle(element);
       const child = element.parentNode === svg;
@@ -185,7 +149,6 @@ export function inlineStyleSheets(svg: SVGSVGElement): void {
         }
       });
     });
-    // Keep the keyframes of animated edges.
     const animated = new Set(
       styled.flatMap((values) => values[properties.indexOf("animation-name")]?.split(", ") ?? []),
     );
@@ -201,7 +164,7 @@ export function inlineStyleSheets(svg: SVGSVGElement): void {
   }
 }
 
-/** A part of a drawing, in its units: CSS pixels of the drawing at 100%. */
+// CSS pixels of the drawing at 100%.
 export interface Area {
   x: number;
   y: number;
@@ -209,10 +172,6 @@ export interface Area {
   height: number;
 }
 
-/**
- * Clones the drawing with a background, without panel interaction attributes or link targets: all
- * of it, or the area of it given.
- */
 export function standaloneSvg(
   source: SVGSVGElement,
   background: string,
@@ -221,10 +180,9 @@ export function standaloneSvg(
   const svg = source.cloneNode(true) as SVGSVGElement;
   svg.setAttribute("xmlns", SVG_NAMESPACE);
   svg.setAttribute("xmlns:xlink", XLINK_NAMESPACE);
-  // The panel sizes the rendering with CSS, which the image is read without.
   svg.removeAttribute("style");
   svg.removeAttribute("class");
-  // Mermaid leaves the color of some HTML labels, such as sequence diagram formulas, to the panel.
+  // Mermaid leaves some HTML labels' color, as of sequence diagram formulas, to the panel.
   svg.style.color = getComputedStyle(source).color;
 
   const { x, y, width, height } = area ?? drawingArea(source);
@@ -236,9 +194,8 @@ export function standaloneSvg(
   for (const name of INTERACTION_ATTRIBUTES) {
     for (const element of svg.querySelectorAll(`[${name}]`)) element.removeAttribute(name);
   }
-  // An HTML label with a text fallback (Mermaid's user journeys): keep the text, which every
-  // application that reads SVG draws, unless the label is a formula, of which the text is TeX.
-  // Mermaid fills the text as it fills the box the label is in, so give it the label's color.
+  // Keep the text fallback of HTML labels (user journeys), in the label's color, as Mermaid fills
+  // it as the box.
   const labels = source.querySelectorAll(HTML_LABEL_WITH_FALLBACK);
   svg.querySelectorAll(HTML_LABEL_WITH_FALLBACK).forEach((element, index) => {
     const text = element.parentElement?.querySelector(":scope > text");
@@ -246,8 +203,7 @@ export function standaloneSvg(
     if (text instanceof SVGElement && shown) text.style.fill = getComputedStyle(shown).color;
     element.remove();
   });
-  // Other HTML labels, which Mermaid draws for some diagrams whatever it is told, such as event
-  // models: their text as SVG text, where it shows in the drawing.
+  // Mermaid draws HTML labels for some diagrams, such as event models, whatever it is told.
   const html = `${HTML_LABEL}:not(switch > *)`;
   const shown = source.querySelectorAll<SVGForeignObjectElement>(html);
   svg.querySelectorAll(html).forEach((element, index) => {
@@ -258,12 +214,11 @@ export function standaloneSvg(
     if (transform) text.setAttribute("transform", transform);
     element.replaceWith(text);
   });
-  // Formulas draw beyond the boxes that Mermaid sizes to their line boxes, as in the panel.
+  // Formulas draw beyond the boxes that Mermaid sizes them.
   for (const element of svg.querySelectorAll("foreignObject")) {
     element.setAttribute("overflow", "visible");
   }
-  // Remove where links lead, from their targets and the panel's tooltips that name them, keeping
-  // the diagram's own tooltips.
+  // Remove link targets and the panel's tooltips naming them.
   for (const title of svg.querySelectorAll("title.diagram-link")) {
     title.remove();
   }
@@ -279,8 +234,8 @@ export function standaloneSvg(
   rect.setAttribute("fill", background);
   svg.prepend(rect);
 
-  // The serializer keeps characters that XML does not allow, such as control characters in labels,
-  // for which strict parsers, and browsers drawing the SVG as an image, refuse all of it.
+  // The serializer keeps characters XML disallows, for which strict parsers, and browsers drawing
+  // the SVG as an image, refuse all of it.
   const markup = new XMLSerializer()
     .serializeToString(svg)
     .replace(NOT_IN_XML, "")
@@ -288,7 +243,6 @@ export function standaloneSvg(
   return { svg: markup, width, height };
 }
 
-/** All of a drawing, in its units. */
 export function drawingArea(svg: SVGSVGElement): Area {
   const box = svg.viewBox.baseVal;
   if (box?.width) return { x: box.x, y: box.y, width: box.width, height: box.height };
@@ -302,10 +256,8 @@ export function drawingArea(svg: SVGSVGElement): Area {
   };
 }
 
-/** How far around the items that a model asks to see the image goes, to show what is next to them. */
 const AREA_MARGIN = 40;
 
-/** The area around the boxes, in the drawing's units, with a margin, within the drawing. */
 export function areaAround(
   drawing: Area,
   boxes: readonly Area[],
@@ -330,10 +282,7 @@ export function areaAround(
     : undefined;
 }
 
-/**
- * The area of a drawing in the document grown to take in the SVG text that it cuts into, within
- * the drawing.
- */
+// Grown to take in SVG text that it cuts into.
 export function withTextIn(svg: SVGSVGElement, drawing: Area, area: Area): Area {
   const boxes = [area];
   for (const text of svg.querySelectorAll("text")) {
@@ -351,7 +300,6 @@ export function withTextIn(svg: SVGSVGElement, drawing: Area, area: Area): Area 
   return areaAround(drawing, boxes, 0) ?? area;
 }
 
-/** Where an element of a drawing in the document is drawn, in the drawing's units, if anywhere. */
 export function boxOf(svg: SVGSVGElement, element: Element): Area | undefined {
   const toUser = svg.getScreenCTM()?.inverse();
   const { left, top, right, bottom, width, height } = element.getBoundingClientRect();
@@ -366,12 +314,9 @@ export function boxOf(svg: SVGSVGElement, element: Element): Area | undefined {
   };
 }
 
-/**
- * The font size of most of the text of a drawing, in the drawing's units: the median of those of
- * its SVG text, also in spans, and its HTML labels, as far as the drawing scales them.
- */
+// The median font size, in the drawing's units.
 export function textSize(svg: SVGSVGElement): number | undefined {
-  // Relative to the drawing's units, which the panel zooms. A drawing out of sight has no scale.
+  // A drawing out of sight has no scale.
   const root = svg.getScreenCTM();
   const scaleOf = (element: Element | null) => {
     const matrix = element instanceof SVGGraphicsElement ? element.getScreenCTM() : null;
@@ -379,7 +324,6 @@ export function textSize(svg: SVGSVGElement): number | undefined {
   };
   const sizes: number[] = [];
   for (const element of svg.querySelectorAll("text, tspan, foreignObject *")) {
-    // The elements with text of their own, rather than those that hold lines or words of it.
     const hasText = Array.from(element.childNodes).some(
       (node) => node.nodeType === Node.TEXT_NODE && node.textContent?.trim(),
     );

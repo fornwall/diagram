@@ -1,7 +1,4 @@
-// Renders Mermaid diagrams as SVG, scaled to fit the panel.
-
-// Mermaid's tooltips call selection.transition(), which importing this adds. d3 marks itself free
-// of side effects, so that bundling Mermaid alone would leave it out.
+// Adds selection.transition() for Mermaid's tooltips; d3's sideEffects flag would drop it.
 import { interrupt } from "d3-transition";
 import type { Mermaid } from "mermaid";
 import type { Annotation, DiagramMark, DiagramNode } from "../protocol";
@@ -65,11 +62,7 @@ import { parseColor, readThemeColors } from "./vscodeTheme";
 
 let loading: Promise<Mermaid> | undefined;
 let renderCounter = 0;
-/**
- * Mermaid, without the settings of the last diagram that it read, which configuring it applies
- * again: those of one that chooses a theme and a color that the theme cannot read, such as
- * "#12345", would fail every later diagram.
- */
+// Reset, or a diagram with an unreadable theme color would fail every later one.
 async function loadMermaid(): Promise<Mermaid> {
   loading ??= import("mermaid").then((module) => module.default);
   const mermaid = await loading;
@@ -79,30 +72,22 @@ async function loadMermaid(): Promise<Mermaid> {
 
 const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 4;
-/** The zoom of a mouse wheel notch, or of as much scrolling on a trackpad. */
 const WHEEL_ZOOM = 1.2;
-/**
- * How much the canvas width must change for a chart drawn at its width to be laid out again
- * (scaling it to fit meanwhile), and how long after the last change: not for a scrollbar, nor for
- * each step of a drag.
- */
+// Width change and delay before relaying out a chart drawn at the panel width: not for a
+// scrollbar, nor each step of a drag.
 const RELAYOUT_THRESHOLD = 16;
 export const RELAYOUT_DELAY = 200;
 
-/** The diagrams whose edges lead the way they point: those drawn as flowcharts, and state diagrams. */
-
-/** Mermaid's default limit: it draws a longer source as an error message instead. */
+// Mermaid's default limit.
 const MAX_TEXT_SIZE = 50_000;
 
-/** A formula in a label, which Mermaid draws with KaTeX as MathML. */
 const FORMULA = /\$\$(.*?)\$\$/;
-/** How Mermaid has KaTeX draw a formula. */
+// As Mermaid has KaTeX draw formulas.
 const MATHML = { displayMode: true, output: "mathml", throwOnError: false } as const;
 
-/** A theme that front matter or an init directive chooses, unlike its themeVariables. */
+// A theme chosen by front matter or an init directive.
 const OWN_THEME = /(?:^|[\s{,])["']?theme["']?\s*:\s*["']?([\w-]*)/m;
 
-/** What a node's links in the source are called in its tooltip: "Open …". */
 function describeLinks(targets: readonly WebLink[]): string {
   const [first] = targets;
   if (targets.length > 1 || !first) {
@@ -114,10 +99,7 @@ function describeLinks(targets: readonly WebLink[]): string {
   return first.name === first.url ? first.url : `${first.name} (${first.url})`;
 }
 
-/**
- * Where Mermaid lays out a drawing before returning it as markup. By default it does so in the body,
- * where the drawing would take room from the panel until Mermaid finishes, reflowing it meanwhile.
- */
+// Where Mermaid lays out drawings; by default the body, which would reflow the panel.
 let container: HTMLElement | undefined;
 function layoutContainer(): HTMLElement {
   if (!container) {
@@ -129,10 +111,7 @@ function layoutContainer(): HTMLElement {
   return container;
 }
 
-/**
- * Grows the view box of a drawing in the layout container to take in all of its text, which the
- * SVG would clip: Mermaid leaves some outside, such as long radar axis and quadrant point labels.
- */
+// Mermaid leaves some text outside the view box, such as long radar and quadrant labels.
 function showAllText(svg: SVGSVGElement): void {
   const box = svg.viewBox.baseVal;
   const toUser = svg.getScreenCTM()?.inverse();
@@ -156,11 +135,7 @@ function showAllText(svg: SVGSVGElement): void {
   }
 }
 
-/**
- * Hides the date labels on a Gantt chart's axes that repeat the date before or would overlap it.
- * Unless the chart sets a tickInterval, Mermaid has d3 pick about ten ticks, such as one every 12
- * hours for a week, which show each date twice and crowd a narrow panel. Their grid lines stay.
- */
+// Hides Gantt axis labels that repeat or overlap the previous one, as d3's default ticks do.
 function thinAxisLabels(svg: SVGSVGElement): void {
   for (const axis of svg.querySelectorAll("g.grid")) {
     const labels = Array.from(axis.querySelectorAll(":scope > g.tick > text"), (text) => ({
@@ -180,16 +155,9 @@ function thinAxisLabels(svg: SVGSVGElement): void {
   }
 }
 
-/**
- * Centers the SVG text labels of nodes that Mermaid leaves starting at the left of their room.
- * Its label helper draws a text label from x = 0, for the diagram's CSS to center it, which only
- * flowchart CSS does. It places the label for text centered there: mind map circles, squares and
- * hexagons, and use case ellipses, would show their labels from the middle to the right. It
- * places a state's label for text that fills the state's least width, wider than short names.
- * The shapes that place a label themselves move it from x = 0.
- */
+// Mermaid draws SVG text labels from x = 0 for CSS to center, which only flowcharts do.
 function centerTextLabels(svg: SVGSVGElement): void {
-  // Read the styles before changing any, which would have each read compute them again.
+  // Read all styles before writing any, to avoid recomputing them.
   const texts = Array.from(
     svg.querySelectorAll<SVGTextElement>(
       'g.node > g.label[transform^="translate(0,"] text, g.statediagram-state > g.label > g > text:not([transform])',
@@ -202,40 +170,27 @@ function centerTextLabels(svg: SVGSVGElement): void {
   }
 }
 
-/**
- * The nodes and groups whose fill the source can set, with `style`, `classDef` and `class`. The
- * nodes of the hand-drawn look are `g.rough-node` instead, which this leaves out: that look hatches
- * fills, so their labels lie on the background.
- */
+// Hand-drawn `g.rough-node` is left out: its hatched fills leave labels on the background.
 const FILLABLE = "g.node, g.cluster";
-/** The groups of nodes, which Mermaid draws before the nodes in them. */
 const GROUP = "g.cluster, g.statediagram-cluster";
-/** What a node or group may draw its fill with. */
 const SHAPE = "rect, path, polygon, circle, ellipse";
-/** What holds the text of a label, as HTML or as SVG text. */
 const LABEL = "foreignObject, text";
-/** A label and what Mermaid draws behind its text alone, rather than a shape it lies on. */
+// A label and what Mermaid draws behind its text alone.
 const IN_LABEL = "g.label, .cluster-label, foreignObject, text";
-/** The notes of class diagrams, which Mermaid fills in the theme's note colors inline. */
+// Class diagram notes, which Mermaid fills inline.
 const NOTE = /-note\d+$/;
-/** A style that sets a fill, as a database holds the styles of the source. */
 const FILL_STYLE = /(?:^|;)\s*fill\s*:/;
 
-/** A shape that a label may lie on, as read before any label is colored. */
 interface FillShape {
   shape: SVGGeometryElement;
   box: DOMRect;
   fill: string;
-  /** Its fill opacity, its opacity and those of the groups it is in within its node. */
+  // Including the opacity of its groups within the node.
   opacity: number;
-  /** From client coordinates to the shape's own, if it is drawn. */
   toShape: DOMMatrix | undefined;
 }
 
-/**
- * The entities of an ER diagram that the source fills. Mermaid draws the fill of one with
- * attributes as an attribute, as it does the theme's, writing it inline only on every other row.
- */
+// Mermaid writes an ER entity's own fill inline only on every other row.
 function filledEntities(svg: SVGSVGElement, db: DiagramDb | undefined): Element[] {
   return (db?.getData?.().nodes ?? [])
     .filter((node) =>
@@ -246,22 +201,8 @@ function filledEntities(svg: SVGSVGElement, db: DiagramDb | undefined): Element[
     .flatMap((node) => svg.querySelector(`#${CSS.escape(`${svg.id}-${node.id}`)}`) ?? []);
 }
 
-/**
- * Draws the labels of the nodes and groups that the source fills in a color legible on the fill.
- * The theme's text color suits the theme's fills, and may all but vanish on others, such as light
- * grey on the light blue of a decision in a dark theme.
- *
- * Mermaid writes the styles of the source inline: a fill on the shape, and a text color on the
- * label, its HTML or its SVG text. The theme fills through the drawing's style sheet alone, or
- * with an attribute on the shapes that Rough.js draws, so an inline fill comes from the source;
- * `filled` are those that the source fills otherwise. Nodes whose labels the source colors keep
- * that color. Each label takes the color legible on the shape that fills the point under its
- * middle, as some are drawn on the theme's fill still, such as every other row of an entity's
- * attributes, and some shapes are open strokes, such as braces. A translucent fill shows the
- * groups that the source fills under it, else the theme's background. A link keeps the theme's
- * link color where that is legible. The drawing must be in the document, where the browser
- * resolves fills.
- */
+// Keeps labels legible on fills set by the source, which are inline, unlike the theme's. Each label
+// goes by the fill under its middle. The drawing must be in the document.
 function colorLabelsOnFills(
   svg: SVGSVGElement,
   colors: ThemeColors,
@@ -275,15 +216,14 @@ function colorLabelsOnFills(
     const { color, fill } = element.style;
     const text = element.matches("text, tspan");
     if (color || (text && fill)) colored.add(owner);
-    // Class diagrams also fill the spans of their HTML labels, where it does nothing.
+    // Class diagrams also fill HTML label spans, to no effect.
     else if (fill && !text && !element.closest("foreignObject")) owners.add(owner);
   }
   if (owners.size === 0) return;
-  // A node's own elements, rather than those of the nodes in a group.
+  // Not those of nested nodes.
   const own = (owner: Element, selector: string) =>
     Array.from(owner.querySelectorAll(selector)).filter((e) => e.closest(FILLABLE) === owner);
-  // Read the fills and where they are before changing any color, which would have each read
-  // compute the styles again.
+  // Read all fills before writing any color, to avoid recomputing styles.
   const opacityOf = (element: Element) => Number(getComputedStyle(element).opacity);
   const drawn = Array.from(owners, (owner) => {
     const shapes = own(owner, SHAPE)
@@ -320,7 +260,7 @@ function colorLabelsOnFills(
     : undefined;
 
   const parsed = new Map<string, Rgba | undefined>();
-  /** What the topmost of the shapes that fills the point paints there over the color below. */
+  // The topmost shape filling the point, blended over `below`.
   const paintAt = (shapes: FillShape[], x: number, y: number, below: Rgba) => {
     for (const { shape, box, fill, opacity, toShape } of shapes.toReversed()) {
       if (x < box.left || x > box.right || y < box.top || y > box.bottom || !toShape) continue;
@@ -332,7 +272,7 @@ function colorLabelsOnFills(
     }
     return undefined;
   };
-  // The groups, the outermost first, to lay the fills of those around a point over each other.
+  // Outermost first, to layer their fills.
   const groups = drawn
     .filter(({ owner }) => owner.matches("g.cluster"))
     .sort((a, b) => b.area - a.area);
@@ -355,7 +295,7 @@ function colorLabelsOnFills(
       });
     }
   }
-  // Mermaid's theme colors the HTML and the SVG text of labels without `!important`.
+  // Mermaid's theme colors labels without `!important`, so inline colors win.
   for (const { label, color, links } of labeled) {
     if (label instanceof SVGTextElement) {
       for (const text of [label, ...label.querySelectorAll("tspan")]) text.style.fill = color;
@@ -367,15 +307,11 @@ function colorLabelsOnFills(
   }
 }
 
-/**
- * Draws the formulas that name sequence diagram participants in boxes. Mermaid draws them without
- * waiting for KaTeX, so the drawing it returns has their labels empty, or not even there. (It
- * draws participants of other shapes likewise, and there is no telling where their labels go.)
- */
+// Mermaid doesn't wait for KaTeX on participant boxes, leaving their labels empty or missing.
 async function drawParticipantFormulas(svg: SVGSVGElement, db: DiagramDb | undefined) {
   const actors = db?.getActors?.();
   const { default: katex } = await import("katex");
-  // The top and the bottom box of each participant, named after it, in a group with its label.
+  // Each participant's top and bottom box.
   for (const box of svg.querySelectorAll("rect.actor[name]")) {
     const description = actors?.get(box.getAttribute("name") ?? "")?.description;
     const group = box.parentElement;
@@ -395,7 +331,7 @@ async function drawParticipantFormulas(svg: SVGSVGElement, db: DiagramDb | undef
       object.append(label);
       group.append(object);
     }
-    // As Mermaid draws the formulas of messages and notes: one line per <br>, text as it is.
+    // As Mermaid draws message formulas: one line per <br>.
     for (const line of description.split(/<br\s*\/?>/i)) {
       const div = document.createElement("div");
       div.style.cssText =
@@ -410,7 +346,7 @@ async function drawParticipantFormulas(svg: SVGSVGElement, db: DiagramDb | undef
   }
 }
 
-/** The elements and text of MathML, without the annotations that drawings leave out. */
+// MathML structure without annotations, which drawings leave out.
 function mathKey(element: Element): string {
   if (element.localName.startsWith("annotation")) return "";
   const inside = Array.from(element.childNodes, (child) =>
@@ -419,10 +355,7 @@ function mathKey(element: Element): string {
   return element.localName === "semantics" ? inside : `<${element.localName}>${inside}</>`;
 }
 
-/**
- * Gives each formula drawn the TeX that the source writes it in, which the drawing leaves out, for
- * its items to go by: the text of the MathML of x^2 is "x 2".
- */
+// Tags drawn formulas with their TeX, which items go by: the MathML text of x^2 is "x 2".
 async function markFormulas(svg: SVGSVGElement, text: string): Promise<void> {
   const { default: katex } = await import("katex");
   const drawn = document.createElement("template");
@@ -438,11 +371,8 @@ async function markFormulas(svg: SVGSVGElement, text: string): Promise<void> {
   }
 }
 
-/**
- * Places a drawing that Mermaid made in the layout container, where it can be measured while the
- * canvas is hidden, and completes it there, in the theme's colors. The caller takes it out of the
- * container again.
- */
+// Completes a drawing in the layout container, where it can be measured while the canvas is
+// hidden. The caller takes it out again.
 async function layOut(
   markup: string,
   diagramType: string,
@@ -450,8 +380,7 @@ async function layOut(
   colors: ThemeColors,
   db: () => Promise<DiagramDb | undefined>,
 ): Promise<SVGSVGElement> {
-  // Read as HTML: an XML parser rejects the <br> or &nbsp; of an HTML label, or a control
-  // character in any label.
+  // An XML parser rejects <br>, &nbsp; or control characters in labels.
   const drawing = document.createElement("div");
   drawing.innerHTML = markup;
   const svg = drawing.firstElementChild;
@@ -469,9 +398,7 @@ async function layOut(
     }
     if (FORMULA.test(text)) await markFormulas(svg, text);
     if (diagramType === "gantt") thinAxisLabels(svg);
-    // Mermaid multiplies the flows of a sankey diagram into the background, which turns them
-    // black on a dark one: screen them onto it instead, which shows them as multiplying does
-    // on a light one.
+    // Mermaid multiplies sankey flows into the background, turning them black on a dark one.
     if (diagramType === "sankey" && colors.dark) {
       for (const flow of svg.querySelectorAll<SVGElement>("g.link")) {
         flow.style.mixBlendMode = "screen";
@@ -485,30 +412,26 @@ async function layOut(
   return svg;
 }
 
-/**
- * The database of a diagram, which mermaid.render keeps to itself: parsed separately for it. Should
- * that fail, the parts that only the database tells about are left out.
- */
+// mermaid.render keeps the database to itself, so parse separately.
 async function databaseOf(mermaid: Mermaid, text: string): Promise<DiagramDb | undefined> {
   try {
-    // It throws some errors, such as those in front matter, rather than rejecting.
+    // Some errors, such as in front matter, are thrown rather than rejected.
     return (await mermaid.mermaidAPI.getDiagramFromText(text)).db as DiagramDb;
   } catch {
     return undefined;
   }
 }
 
-/** The middle of an element, in client coordinates. */
 function center(element: Element): Point {
   const box = element.getBoundingClientRect();
   return [box.left + box.width / 2, box.top + box.height / 2];
 }
 
-/** What a drawing shows of the state of its nodes, by node id. */
+// By node id.
 interface Shown {
   selected: ReadonlyMap<string, boolean>;
   marks: ReadonlyMap<string, DiagramMark["kind"]>;
-  /** What the tooltip of a linked node says it opens. */
+  // Tooltip text of linked nodes.
   links: ReadonlyMap<string, string>;
 }
 const nothingShown = (): Shown => ({ selected: new Map(), marks: new Map(), links: new Map() });
@@ -520,33 +443,27 @@ export class MermaidRenderer implements Renderer {
 
   private drawn = NOTHING_DRAWN;
   private shown = nothingShown();
-  /** The selection, code links and marks, which a new drawing of the diagram shows again. */
+  // Shown again by a new drawing.
   private selectedKeys: ReadonlySet<string> = new Set();
   private links: ReadonlyMap<string, string> = new Map();
   private annotation: Annotation = UNMARKED;
   private zoom = 1;
-  /** Whether the zoom follows the panel size, until the user zooms by hand. */
+  // Until the user zooms by hand.
   private fitting = true;
-  /** Whether the next drawing is of another diagram, which starts scrolled to its top left. */
+  // Another diagram starts scrolled to its top left.
   private scrollToStart = false;
   private displayedSource: string | undefined;
-  /**
-   * What the shown drawing was drawn from: its source, the width it was laid out at and Mermaid's
-   * configuration. Until redraw, a render of the same draws nothing new.
-   */
+  // Source, layout width and config; until redraw, rendering the same draws nothing new.
   private drawnFrom: string | undefined;
-  /** The last image, and what it was drawn from, which an image of the same takes again. */
   private image: { from: string; image: DiagramImage } | undefined;
   private diagramType: string | undefined;
-  /** Whether the diagram shown sets its own width, rather than the panel sizing it. */
+  // Whether the diagram sets its own width rather than the panel sizing it.
   private ownWidth = false;
-  /** The size of most of the text of the drawing shown, at actual size. */
+  // Of most of the drawing's text, at actual size.
   private textSize: number | undefined;
-  /** The width of the container that the drawing was laid out in. */
   private layoutWidth = 0;
   private fitFrame = 0;
   private relayoutTimer: ReturnType<typeof setTimeout> | undefined;
-  /** The node that has the drawing's tab stop. */
   private tabStop: string | undefined;
   private readonly resizeObserver = new ResizeObserver(() => {
     if (this.displayedSource === undefined) return;
@@ -561,7 +478,7 @@ export class MermaidRenderer implements Renderer {
       clearTimeout(this.relayoutTimer);
       this.relayoutTimer = setTimeout(() => this.enqueue(() => this.relayout()), RELAYOUT_DELAY);
     }
-    // What the drawing warns of goes by the panel's width.
+    // Warnings depend on the panel width.
     warningsMayChange(this.canvas);
   });
 
@@ -570,14 +487,11 @@ export class MermaidRenderer implements Renderer {
     private readonly canvas: HTMLElement,
     private readonly diagram: HTMLElement,
     private readonly zoomButton: HTMLElement,
-    /** Runs a task in the panel's render queue. */
     private readonly enqueue: (task: () => Promise<void>) => void,
-    /** Whether the tab is hidden behind another, at the size of an empty frame. */
     private readonly tabHidden: () => boolean,
   ) {
     const activate = (event: MouseEvent | KeyboardEvent) => {
-      // The first click of a double click acted already: a second would undo its selection, or
-      // open the node's link once more.
+      // The first click of a double click already acted.
       if (event instanceof MouseEvent && event.detail > 1) return;
       const target = event.target instanceof Element ? event.target : undefined;
       const element = target?.closest(".diagram-node");
@@ -586,11 +500,9 @@ export class MermaidRenderer implements Renderer {
         itemClicked(undefined, withModifier(event));
         return;
       }
-      // A click on a label, or beside a line, lands the focus on the canvas, as those parts are
-      // not focusable: keep the keyboard on the node, as a click on its shape does.
+      // Labels and edge surroundings aren't focusable: keep the keyboard on the node.
       if (event instanceof MouseEvent) this.tabStopOf(node.id)?.focus({ preventScroll: true });
-      // A link in a label or a shown actor menu leads where it says; anywhere else, and for a key,
-      // the node's links do.
+      // A link in a label or actor menu wins over the node's links.
       const href = target?.closest("a[data-href]")?.getAttribute("data-href");
       const targets = href ? [{ name: href, url: href }] : this.drawn.links.get(node.id);
       itemClicked(
@@ -599,9 +511,7 @@ export class MermaidRenderer implements Renderer {
       );
     };
     diagram.addEventListener("click", activate);
-    // A Shift+click adds the node to the selection: the browser would also extend its text
-    // selection from the last click to it, highlighting the labels in between. Canceling the
-    // pointerdown stops that, and keeps the focus where it was: move it as a click would.
+    // Shift+click would also extend the text selection; cancel it and move focus as a click would.
     diagram.addEventListener("pointerdown", (event) => {
       if (!event.shiftKey || event.button !== 0) return;
       const element =
@@ -611,8 +521,7 @@ export class MermaidRenderer implements Renderer {
       event.preventDefault();
       stop.focus({ preventScroll: true });
     });
-    // Nodes are buttons for the keyboard, with one tab stop for the drawing: arrow keys move
-    // between them, Home and End to the first and the last.
+    // One tab stop for the drawing; arrow keys, Home and End move between nodes.
     diagram.addEventListener("keydown", (event) => {
       const { target } = event;
       if (!(target instanceof SVGElement && this.drawn.byElement.has(target))) return;
@@ -621,7 +530,7 @@ export class MermaidRenderer implements Renderer {
         activate(event);
         return;
       }
-      // Not with Alt, Ctrl or Meta, which make other shortcuts of the arrow keys, as for a chart.
+      // Modified arrow keys are other shortcuts.
       if (event.altKey || event.ctrlKey || event.metaKey) return;
       const next = this.neighbor(target, event.key);
       if (next !== undefined) {
@@ -632,10 +541,8 @@ export class MermaidRenderer implements Renderer {
     diagram.addEventListener("focusin", ({ target }) => {
       if (target instanceof SVGElement && target.hasAttribute("tabindex")) this.setTabStop(target);
     });
-    // The canvas, which a pick or Highlight Path focuses, passes the keys that move between nodes
-    // on to them, as a chart does to its items: an arrow key leads to the drawing's tab stop, or
-    // the node nearest the middle if that is out of sight, and Home and End to the first and the
-    // last. They scroll the canvas only for a drawing without nodes.
+    // The focused canvas passes node navigation keys on to the tab stop, or the node nearest the
+    // middle if that is out of sight.
     canvas.addEventListener("keydown", (event) => {
       const { key } = event;
       const moves = key === "Home" || key === "End" || arrowDirection(key) !== undefined;
@@ -646,21 +553,17 @@ export class MermaidRenderer implements Renderer {
       event.preventDefault();
       next.focus();
     });
-    // Ctrl/Cmd+scroll zooms at the pointer, in proportion to the scrolling, and a trackpad pinch,
-    // which Chromium reports as Ctrl+scrolling, as much as the fingers spread. Both send many
-    // small deltas: apply them once per frame.
+    // Ctrl/Cmd+scroll and pinch (Ctrl+scroll in Chromium) zoom at the pointer, once per frame.
     let wheel: { factor: number; x: number; y: number } | undefined;
     canvas.addEventListener(
       "wheel",
       (event) => {
         if (!(event.ctrlKey || event.metaKey) || this.displayedSource === undefined) return;
         event.preventDefault();
-        // Scrolling sideways does not zoom, nor stop the drawing fitting the panel.
         if (!event.deltaY) return;
-        // Chromium reports each step of a pinch as Ctrl and a whole wheel tick (a wheelDeltaY of
-        // ±120) of deltaY -100·ln(scale) pixels, where scrolling reports at least a pixel for
-        // every 3 of wheelDeltaY (see CreateSyntheticWheelFromTouchpadPinchEvent). Scrolling by
-        // lines or pages, as Windows can be set to, reports a notch as ±1 or so.
+        // Chromium reports a pinch step as a whole wheel tick (wheelDeltaY ±120) with deltaY
+        // -100·ln(scale); scrolling gives at least 1px per 3 wheelDeltaY. Line or page scrolling
+        // reports about ±1 per notch.
         const { wheelDeltaY = 0 } = event as WheelEvent & { wheelDeltaY?: number };
         const inPixels = event.deltaMode === WheelEvent.DOM_DELTA_PIXEL;
         const pinch =
@@ -687,11 +590,7 @@ export class MermaidRenderer implements Renderer {
     this.resizeObserver.observe(canvas);
   }
 
-  /**
-   * How Mermaid is configured for the VS Code theme of these colors, to draw the source at the
-   * width that the panel has, by default the width that the drawing shown was laid out at, unless
-   * it sets its own width, as by default the drawing shown does.
-   */
+  // Mermaid config for the theme and width; by default those of the drawing shown.
   private config(
     source: string,
     colors = readThemeColors(),
@@ -704,11 +603,9 @@ export class MermaidRenderer implements Renderer {
       startOnLoad: false,
       securityLevel: "strict",
       maxTextSize: MAX_TEXT_SIZE,
-      // Throw errors instead of rendering them as a diagram, and clean up after failing.
+      // Throw instead of rendering errors as a diagram.
       suppressErrorRendering: true,
-      // A diagram that chooses a theme of its own takes it whole: Mermaid would color it with
-      // these too, and the text of its nodes in the color meant for VS Code's theme. The base
-      // theme is the panel's.
+      // A diagram choosing its own theme takes it whole, without the VS Code colors.
       ...(![undefined, "base"].includes(OWN_THEME.exec(settings)?.[1])
         ? { theme: "base", themeVariables: {} }
         : mermaidTheme(colors, keyword)),
@@ -727,11 +624,8 @@ export class MermaidRenderer implements Renderer {
     const colors = readThemeColors();
     const id = `diagram-svg-${++renderCounter}`;
     const container = layoutContainer();
-    // Gantt charts take the width of the element they are drawn in, and other charts the size
-    // that they are configured to: give them the width they are shown at, rather than shrinking
-    // their text to fit. In the Source view the canvas has no width: keep the last one, or before
-    // any, take the one it has in the Visual view. A hidden tab has none to take: the chart is
-    // laid out again once the tab is shown.
+    // Lay out at the shown width rather than shrinking text to fit. The Source view's canvas has
+    // no width: keep the last, or measure the Visual view's. A hidden tab relays out once shown.
     let { width } = this.contentSize();
     if (width <= 0 && this.layoutWidth <= 0 && !this.tabHidden() && this.canvas.parentElement) {
       const style = getComputedStyle(this.canvas);
@@ -748,7 +642,7 @@ export class MermaidRenderer implements Renderer {
     }
     const text = parsableSource(source);
     const keyword = diagramHeader(source).typeLine?.split(/\s/)[0];
-    // Configuring Mermaid applies the settings of the diagram, which may set colors it cannot read.
+    // The diagram's settings may set colors Mermaid cannot read.
     const configure = async () => {
       const ownWidth = await setsOwnWidth(
         mermaid,
@@ -768,14 +662,11 @@ export class MermaidRenderer implements Renderer {
     const { ownWidth, config } = await configure().catch((error: unknown) => {
       throw themeColorError(error, source) ?? error;
     });
-    // A drawing that fails leaves the one shown, and the width it was laid out at. The width is
-    // this renderer's own: a draft's lays its drawings out in the same container.
+    // A failed drawing keeps the shown one and its width; drafts share the container.
     const shownWidth = container.style.width;
     const laidOut = width > 0 ? width : this.layoutWidth;
     const drawWidth = laidOut > 0 ? `${laidOut}px` : shownWidth;
-    // The extension sends the diagram shown again, such as with other links, or once the page
-    // answers a render that it gave up waiting for: keep the drawing, which takes seconds for a
-    // large diagram to make again.
+    // Large diagrams take seconds to redraw; skip if unchanged.
     const drawnFrom = JSON.stringify([source, drawWidth, config]);
     if (drawnFrom === this.drawnFrom && this.diagramType) {
       this.present();
@@ -784,7 +675,7 @@ export class MermaidRenderer implements Renderer {
     container.style.width = drawWidth;
     const drawing = async () => {
       const parsed = await databaseOf(mermaid, text);
-      // Mermaid would lay out the first forever, and draw the second out of place.
+      // Mermaid would lay out the first forever, and misplace the second.
       const invalid = nestingError(parsed, source) ?? numberError(parsed, source);
       if (invalid) throw invalid;
       const result = await mermaid.render(id, text, container).catch(async (error: unknown) => {
@@ -799,7 +690,7 @@ export class MermaidRenderer implements Renderer {
       });
       const db = WITH_DATABASE.has(result.diagramType) ? parsed : undefined;
       const svg = await layOut(result.svg, result.diagramType, text, colors, async () => db);
-      // Measured in the layout container, as the canvas may be hidden, as by the Source view.
+      // Measured in the layout container, as the canvas may be hidden.
       return { result, db, svg, size: textSize(svg) };
     };
     const { result, db, svg, size } = await drawing().catch((error: unknown) => {
@@ -810,17 +701,15 @@ export class MermaidRenderer implements Renderer {
     this.drawnFrom = drawnFrom;
     this.hideTooltip();
     this.diagram.replaceChildren(svg);
-    // A click selects, and links open through the extension, which checks their URLs. A link that
-    // Mermaid draws, from a click directive or a label, would open its URL, written by a model, on
-    // that same click, in a trusted workspace without asking. Keep where it leads as data.
+    // Links open via the extension, which checks URLs; Mermaid's would open model-written URLs
+    // directly.
     for (const link of this.diagram.querySelectorAll("a")) {
       const href = hrefOf(link)?.trim();
       link.removeAttribute("href");
       link.removeAttributeNS(XLINK_NAMESPACE, "href");
       if (href) link.setAttribute("data-href", href);
     }
-    // A Gantt chart binds nothing but its links, to open them with window.open, which would take
-    // the panel itself to the URL. findNodes links its tasks instead.
+    // Gantt binds only window.open links, which would navigate the panel; findNodes links tasks.
     if (result.diagramType !== "gantt") result.bindFunctions?.(this.diagram);
     this.diagram.hidden = false;
     this.displayedSource = source;
@@ -832,28 +721,18 @@ export class MermaidRenderer implements Renderer {
     return result.diagramType;
   }
 
-  /**
-   * Sizes the drawing for the zoom, or to fit the panel, keeping the zoom until fitting can measure
-   * the panel, e.g. while it is hidden, and scrolls a drawing of another diagram than the one shown
-   * before to where it starts.
-   */
+  // Fitting keeps the zoom until the panel can be measured.
   private present(): void {
     this.setZoom(this.zoom);
     if (this.fitting) this.fit();
     this.showStart();
   }
 
-  /**
-   * Scrolls the canvas to show where the drawing of another diagram starts: its first node in the
-   * middle, such as the root of a flowchart laid out top down, which is at the top in the middle,
-   * out of sight in a wide drawing scrolled to its top left corner. Waits for the canvas to have
-   * a size, which it has not while hidden: the resize observer scrolls once it has.
-   */
+  // Centers the first node of another diagram; once the canvas has a size.
   private showStart(): void {
     if (!this.scrollToStart || this.contentSize().width <= 0) return;
     this.scrollToStart = false;
-    // As found, rather than as drawn: a sequence diagram draws the footers of its participants
-    // before their headers.
+    // As found rather than drawn: sequence diagrams draw participant footers first.
     const shown = (node: DiagramNode) => this.drawn.elements.get(node.id)?.[0];
     const first = this.drawn.nodes.find(
       (node) => !node.relationship && !shown(node)?.matches(GROUP),
@@ -874,19 +753,7 @@ export class MermaidRenderer implements Renderer {
     );
   }
 
-  /**
-   * The diagram as an image, rendered a second time with its labels as SVG text.
-   *
-   * Mermaid draws a label as HTML in a `foreignObject` unless told otherwise. Most applications
-   * that read SVG leave that out, so the labels would go missing where the image is dropped. The
-   * copy on screen keeps its HTML labels, which wrap better, and is left untouched: this render
-   * goes to a string, not into the panel.
-   *
-   * Formulas are MathML, which only HTML labels hold: a diagram with any is drawn as in the panel.
-   * (Class and sequence diagrams draw formulas as HTML either way, but other diagrams would show
-   * their TeX.) standaloneSvg turns its other labels into SVG text, as it does those that some
-   * diagrams draw as HTML whatever Mermaid is told.
-   */
+  // With SVG text labels, as most SVG readers drop `foreignObject`. Formulas keep HTML for MathML.
   async toImage(background: string): Promise<DiagramImage> {
     const source = this.displayedSource;
     if (source === undefined) {
@@ -896,10 +763,9 @@ export class MermaidRenderer implements Renderer {
     const mermaid = await loadMermaid();
     const text = parsableSource(source);
     const config = await withOwnThemeVariables(mermaid, this.config(source, colors), text, colors);
-    // Exporting, viewing and dragging the same diagram each drew it again, for seconds if large.
-    // The image takes the color of the text around the drawing for labels that leave it to CSS.
+    // For labels that leave their color to CSS.
     const color = getComputedStyle(document.body).color;
-    // At the width that the drawing shown was laid out at, which a draft's may have changed since.
+    // A draft may have changed the container width since.
     const container = layoutContainer();
     if (this.layoutWidth > 0) container.style.width = `${this.layoutWidth}px`;
     const width = container.style.width;
@@ -913,18 +779,15 @@ export class MermaidRenderer implements Renderer {
             htmlLabels: false,
             // Swimlane titles still follow this deprecated setting alone.
             flowchart: { htmlLabels: false },
-            // SVG text would show the tags of HTML in labels, such as <b> and <a>: keep only their
-            // text and the line breaks that Mermaid splits SVG text at.
+            // SVG text would show HTML tags; keep only line breaks.
             dompurifyConfig: { ALLOWED_TAGS: ["br"] },
-            // Front matter and init directives must not put HTML labels back into an image.
+            // Front matter must not put HTML labels back.
             secure: [...(mermaid.mermaidAPI.defaultConfig.secure ?? []), "htmlLabels"],
           },
     );
     try {
       const { svg, diagramType } = await mermaid.render(
-        // Mermaid scopes the styles and arrowheads of the drawing by this id. Unlike a count, a
-        // random one does not repeat in an image from another session, which a document or design
-        // that holds both would otherwise draw with the styles and arrowheads of the first.
+        // Mermaid scopes styles by this id; random so images from different sessions don't clash.
         `diagram-image-${crypto.randomUUID().slice(0, 8)}`,
         text,
         container,
@@ -939,25 +802,20 @@ export class MermaidRenderer implements Renderer {
         drawing.remove();
       }
     } finally {
-      // Leave Mermaid configured for the panel: a theme change or a resize may render before the
-      // next diagram arrives, and would otherwise draw the labels as plain text.
+      // Restore the panel config, which a theme change or resize may render with.
       mermaid.initialize(this.config(source));
     }
   }
 
-  /**
-   * The drawing as the panel shows it, its labels as SVG text where they are shown, rather than an
-   * image drawn anew, whose labels can wrap otherwise: without the selection, marks and links, which
-   * the panel's style sheet shows.
-   */
+  // The drawing as shown, without selection, marks and links, rather than drawn anew.
   async modelImage(background: string, ids: readonly string[]): Promise<ModelImage> {
     const shown = this.diagram.querySelector("svg");
     const natural = shown?.viewBox.baseVal;
     if (this.displayedSource === undefined || !shown || !natural) {
       throw new Error("There is no diagram to make an image of.");
     }
-    // Measured in a copy at its actual size, where Mermaid laid it out: the drawing has no layout
-    // while out of sight, as in the Source view, and text zoomed out far has other widths.
+    // Measured in a copy at actual size: the drawing has no layout while hidden, and text zoomed
+    // far out has other widths.
     const svg = shown.cloneNode(true) as SVGSVGElement;
     svg.setAttribute("width", String(natural.width));
     svg.setAttribute("height", String(natural.height));
@@ -1001,10 +859,7 @@ export class MermaidRenderer implements Renderer {
     this.image = undefined;
   }
 
-  /**
-   * Hides the tooltip of the node under the pointer, which Mermaid hides only as the pointer leaves
-   * the node: else it would stay over the drawing or chart that replaces it.
-   */
+  // Mermaid hides it only when the pointer leaves the node.
   private hideTooltip(): void {
     const tooltip = document.querySelector<HTMLElement>(".mermaidTooltip");
     if (!tooltip || !this.diagram.querySelector("[title].hover")) return;
@@ -1029,7 +884,7 @@ export class MermaidRenderer implements Renderer {
       if (after !== undefined) element.classList.add(`diagram-mark-${after}`);
       element.classList.toggle("diagram-marked", after !== undefined);
     });
-    // Nothing is faded while nothing is marked, however the annotation asks for it.
+    // Nothing is faded while nothing is marked.
     this.diagram.classList.toggle("dim-unmarked", annotation.dim && kinds.size > 0);
   }
 
@@ -1050,7 +905,7 @@ export class MermaidRenderer implements Renderer {
 
   showLinks(locations: ReadonlyMap<string, string>): void {
     this.links = locations;
-    // A node's code link takes precedence over its links in the source, as on a click.
+    // Code links win over source links, as on a click.
     const opens = new Map([
       ...Array.from(this.drawn.links, ([id, targets]) => [id, describeLinks(targets)] as const),
       ...locations,
@@ -1069,10 +924,7 @@ export class MermaidRenderer implements Renderer {
     });
   }
 
-  /**
-   * Shows the next state of the nodes on the elements of those whose state changed, and returns
-   * it: a click changes just its old and new selection, however large the drawing is.
-   */
+  // Touches only changed nodes, however large the drawing.
   private update<T>(
     shown: ReadonlyMap<string, T>,
     next: ReadonlyMap<string, T>,
@@ -1101,32 +953,23 @@ export class MermaidRenderer implements Renderer {
     }
   }
 
-  /**
-   * Renders the shown diagram again, keeping the keyboard focus on the node that has it. Failing
-   * that, as it rendered before, keeps what is shown.
-   */
+  // On failure, keeps what is shown.
   private async redraw(source: string): Promise<boolean> {
     const focused = this.diagram.contains(document.activeElement);
-    // Whatever changed, such as the theme, draw it anew rather than keep the drawing.
     this.drawnFrom = undefined;
     try {
       await this.render(source);
     } catch {
       return false;
     }
-    // Replacing the SVG removes its focused node, which was the tab stop, as the new one is. Keep
-    // keyboard navigation there, unless the user moved the focus elsewhere meanwhile.
+    // Replacing the SVG drops the focused node; refocus the new tab stop unless focus moved.
     if (focused && document.hasFocus() && document.activeElement === document.body) {
       this.diagram.querySelector<SVGElement>('[tabindex="0"]')?.focus({ preventScroll: true });
     }
     return true;
   }
 
-  /**
-   * Lays a Gantt chart, or another chart drawn at the width of the canvas, out again at that width,
-   * rather than scaling it with its text. A zoom by hand stays as much larger or smaller than fitting, and the
-   * canvas stays scrolled to the same part of the chart.
-   */
+  // Lays a width-drawn chart out again rather than scaling its text, keeping relative zoom and scroll.
   private async relayout(): Promise<void> {
     const source = this.displayedSource;
     const room = this.contentSize();
@@ -1151,13 +994,12 @@ export class MermaidRenderer implements Renderer {
     this.canvas.scrollTop = (scrollTop * this.canvas.scrollHeight) / scrollHeight;
   }
 
-  /** Zooms, keeping the point at the given client coordinates (the middle by default) in place. */
+  // Keeps the point at the given client coordinates (default the middle) in place.
   zoomBy(factor: number, x?: number, y?: number): void {
     this.fitting = false;
     this.zoomAt(this.zoom * factor, x, y);
   }
 
-  /** Sets the zoom, keeping the point at the given client coordinates (the middle by default). */
   private zoomAt(value: number, x?: number, y?: number): void {
     const svg = this.diagram.querySelector("svg");
     const before = svg?.getBoundingClientRect();
@@ -1174,12 +1016,7 @@ export class MermaidRenderer implements Renderer {
       after.top + ((anchorY - before.top) * after.height) / before.height - anchorY;
   }
 
-  /**
-   * Fits the diagram, or lays a chart drawn at the panel's width out, for the tab shown again. The resize observer
-   * reports no size it reported before the tab was hidden, and the page can hear that the tab is
-   * shown before it has the tab's size: observing anew reports the size in the next frame, and
-   * any change after it.
-   */
+  // The resize observer doesn't re-report sizes from before the tab was hidden; observing anew does.
   tabShown(): void {
     this.resizeObserver.unobserve(this.canvas);
     this.resizeObserver.observe(this.canvas);
@@ -1190,10 +1027,7 @@ export class MermaidRenderer implements Renderer {
     this.scrollToStart = true;
   }
 
-  /**
-   * Toggles between fitting the panel and the actual size, keeping the middle of what is shown in
-   * place, as the zoom buttons do: else the actual size would show the top left of the drawing.
-   */
+  // Toggles fit/actual size, keeping the middle in place.
   zoomReset(): void {
     if (this.fitting && this.zoom !== 1) {
       this.fitting = false;
@@ -1205,11 +1039,7 @@ export class MermaidRenderer implements Renderer {
     }
   }
 
-  /**
-   * The node to move the focus to from the given one for a key: the nearest in the direction of an
-   * arrow key (null if there is none), or the first or last node, in the order of the source, for
-   * Home and End. Undefined if the key does not move the focus.
-   */
+  // Null if there is no node that way; undefined if the key doesn't move focus.
   private neighbor(from: SVGElement, key: string): SVGElement | null | undefined {
     if (key === "Home" || key === "End") return this.endNode(key);
     const direction = arrowDirection(key);
@@ -1218,23 +1048,19 @@ export class MermaidRenderer implements Renderer {
     return nearestInDirection(from, direction, stops, center) ?? null;
   }
 
-  /** The first or the last node, in the order of the source. */
+  // In source order.
   private endNode(key: "Home" | "End"): SVGElement | null {
     const nodes = this.drawn.nodes.filter((node) => !node.relationship);
     const node = key === "Home" ? nodes[0] : nodes.at(-1);
     return node ? this.tabStopOf(node.id) : null;
   }
 
-  /** The element of the node with the id that takes the keyboard focus, if it is drawn. */
   private tabStopOf(id: string): SVGElement | null {
     const elements = this.drawn.elements.get(id) ?? [];
     return elements.find((element): element is SVGElement => element.matches("[tabindex]")) ?? null;
   }
 
-  /**
-   * The drawing's tab stop if it is in sight in the canvas, else the node or relationship nearest
-   * the middle of what the canvas shows, rather than one that the focus would scroll far to.
-   */
+  // The tab stop if in sight, else the node nearest the middle, rather than scrolling far.
   private stopInSight(): SVGElement | null {
     const view = this.canvas.getBoundingClientRect();
     const left = view.left + this.canvas.clientLeft;
@@ -1257,7 +1083,6 @@ export class MermaidRenderer implements Renderer {
     return nearest;
   }
 
-  /** Makes the element the drawing's tab stop. */
   private setTabStop(element: SVGElement): void {
     const node = this.drawn.byElement.get(element);
     if (!node || element.getAttribute("tabindex") === "0") return;
@@ -1266,18 +1091,16 @@ export class MermaidRenderer implements Renderer {
     this.tabStop = node.id;
   }
 
-  /** Finds the nodes of a new drawing, and shows their selection, links and marks on it. */
   private prepareSvg(svg: SVGSVGElement, svgId: string, db: DiagramDb | undefined): void {
     this.shown = nothingShown();
     this.drawn = NOTHING_DRAWN;
     try {
       this.drawn = findNodes(svg, `${svgId}-`, db);
     } catch (error) {
-      // A drawing unlike what findNodes expects is still worth showing, if without its nodes.
+      // Still worth showing, without nodes.
       console.error(error);
     }
-    // Keep the tab stop on the same node in a new version of the drawing. Else it starts on the
-    // first node, rather than on what comes first in the drawing, such as an edge of a flowchart.
+    // Keep the tab stop on the same node, else start on the first node in source order.
     const stops = svg.querySelectorAll<SVGElement>(".diagram-node[tabindex]");
     const stop =
       Array.from(stops).find((element) => this.drawn.byElement.get(element)?.id === this.tabStop) ??
@@ -1291,10 +1114,7 @@ export class MermaidRenderer implements Renderer {
     svg.style.maxWidth = "none";
   }
 
-  /**
-   * The room for the diagram in the canvas, which is 0 × 0 while it is hidden, as by the Source
-   * view, or while the tab is, when the page has the size of an empty frame instead.
-   */
+  // 0 × 0 while hidden, by the Source view or the tab.
   private contentSize(): { width: number; height: number } {
     if (this.tabHidden()) return { width: 0, height: 0 };
     const style = getComputedStyle(this.canvas);
@@ -1305,14 +1125,13 @@ export class MermaidRenderer implements Renderer {
     };
   }
 
-  /** Scales large diagrams down to the panel width (and height, within reason). */
+  // To the panel width (and height, within reason).
   private fit(): void {
     const zoom = this.fitZoom(this.diagram.querySelector("svg")?.viewBox.baseVal);
-    // Undefined until the canvas is laid out (e.g. the panel is hidden); the resize observer fits later.
+    // Undefined until the canvas is laid out; the resize observer fits later.
     if (zoom !== undefined) this.setZoom(zoom);
   }
 
-  /** The zoom that fits a drawing of the given size into the room, if there is any. */
   private fitZoom(
     natural: DOMRect | undefined,
     { width, height } = this.contentSize(),
@@ -1328,11 +1147,7 @@ export class MermaidRenderer implements Renderer {
     );
   }
 
-  /**
-   * Scales the drawing by its size, rather than by CSS zoom, which would leave the client
-   * coordinates of its elements unscaled. Closes a node's menu of links, which would stay behind
-   * where the node was, but not one of another drawing, as a draft's zooms its own.
-   */
+  // By size rather than CSS zoom, which leaves client coordinates unscaled.
   private setZoom(value: number): void {
     const zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, value));
     if (zoom !== this.zoom) closeLinkMenu(this.canvas);
@@ -1347,7 +1162,6 @@ export class MermaidRenderer implements Renderer {
     const action = this.fitting && this.zoom !== 1 ? "Show at actual size" : "Fit to the panel";
     this.zoomButton.textContent = shown;
     this.zoomButton.title = `${action} (Ctrl/Cmd+0)`;
-    // The name says what the button does, after the zoom it shows.
     this.zoomButton.setAttribute("aria-label", `${shown}: ${action}`);
   }
 }

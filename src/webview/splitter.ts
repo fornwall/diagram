@@ -1,25 +1,17 @@
-// The handle between the source editor and the rendering in the split view.
-
-/** Limits on the source editor's share of the split view. */
+// The source editor's share.
 const MIN_FRACTION = 0.15;
 const MAX_FRACTION = 0.85;
-/** How much an arrow key moves the handle. */
 const KEY_STEP = 0.05;
 const DEFAULT_FRACTION = 0.4;
 
 const percent = (fraction: number) => String(Math.round(fraction * 100));
 
-/** Split position persisted across reloads. */
 export interface Split {
   readonly fraction: number;
-  /** Ignores invalid saved values and clamps valid fractions. */
   restore(value: unknown): void;
 }
 
-/**
- * Resizes the editor with dragging, arrow keys, Home/End, or Enter to reset. Narrow panels stack
- * the panes vertically. Calls onChange after each keyboard change or completed drag.
- */
+// Narrow panels stack the panes vertically.
 export function enableSplitter(
   splitter: HTMLElement,
   panes: HTMLElement,
@@ -44,7 +36,6 @@ export function enableSplitter(
     if (event.button !== 0 || !event.isPrimary) {
       return;
     }
-    // Dragging the handle resizes the panes instead of selecting the text beside it.
     event.preventDefault();
     splitter.setPointerCapture(event.pointerId);
     splitter.classList.add("dragging");
@@ -61,7 +52,7 @@ export function enableSplitter(
     );
   });
 
-  // Releasing the pointer, or the browser cancelling it, ends the capture, and with it the drag.
+  // Also when the browser cancels the pointer.
   splitter.addEventListener("lostpointercapture", () => {
     splitter.classList.remove("dragging");
     onChange();
@@ -80,8 +71,7 @@ export function enableSplitter(
       return;
     }
     event.preventDefault();
-    // CSS minimum sizes can constrain the requested fraction. Start from the actual size so
-    // the first keypress still moves the handle.
+    // From the actual size, which CSS minimums may constrain, so a keypress always moves it.
     const shown = stacked()
       ? editor.offsetHeight / panes.clientHeight
       : editor.offsetWidth / panes.clientWidth;
@@ -89,7 +79,7 @@ export function enableSplitter(
     onChange();
   });
 
-  // Double-clicking the handle puts it back where it started, as it does with a VS Code sash.
+  // As with a VS Code sash.
   splitter.addEventListener("dblclick", () => {
     setFraction(DEFAULT_FRACTION);
     onChange();
@@ -99,7 +89,6 @@ export function enableSplitter(
   splitter.setAttribute("aria-valuemax", percent(MAX_FRACTION));
   updateOrientation();
   setFraction(fraction);
-  // Crossing the responsive breakpoint changes the separator's orientation without a drag.
   new ResizeObserver(updateOrientation).observe(panes);
   return {
     get fraction() {

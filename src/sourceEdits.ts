@@ -1,27 +1,22 @@
-// Exact source replacements and numbered diagnostic excerpts.
-
 import { formatCount, joinWords, lineAndColumn, shorten } from "./text";
 
-/** Replaces oldText, which must occur once in the source unless every occurrence is to go. */
+// oldText must occur once unless replaceAll.
 export interface SourceEdit {
   oldText: string;
   newText: string;
   replaceAll: boolean;
 }
 
-/** Sequential edits and replacement counts, or problems with no edits committed. */
 type EditedSource =
   | { ok: true; source: string; replaced: number[] }
   | { ok: false; problems: string[] };
 
-/** The most lines quoted around a place, and the most characters of each. */
 const CONTEXT_LINES = 3;
 const MAX_LINE_LENGTH = 200;
-/** The most occurrences of an ambiguous oldText listed. */
 const MAX_LISTED = 5;
-/** How many characters of lines times lines of oldText the search for the closest lines compares. */
+// Source characters times oldText lines.
 const MAX_COMPARED = 2_000_000;
-/** Placeholder inserted by describe.ts when omitting long runs of chart values. */
+// From describe.ts.
 const LEFT_OUT_VALUES = /^\s*… [\d,]+ more lines? of values …\s*$/;
 
 export function applySourceEdits(source: string, edits: readonly SourceEdit[]): EditedSource {
@@ -45,7 +40,7 @@ export function applySourceEdits(source: string, edits: readonly SourceEdit[]): 
     if (!replaceAll && text.indexOf(oldText, first + 1) >= 0) {
       const { count, lines, totalLines, overlapping } = matchingLines(text, oldText);
       const sourceLines = text.split(/\r\n?|\n/, lines.at(-1));
-      // As replaceAll replaces only occurrences that do not overlap, it cannot change them all.
+      // replaceAll replaces only occurrences that do not overlap.
       const advice = overlapping
         ? `, overlapping, so "replaceAll" would not change every one. Include more of the text around the one to change`
         : `. Include more of the text around the one to change, or set "replaceAll": true to change every one`;
@@ -70,10 +65,7 @@ export function applySourceEdits(source: string, edits: readonly SourceEdit[]): 
   return problems.length > 0 ? { ok: false, problems } : { ok: true, source: text, replaced };
 }
 
-/**
- * Counts matches, also overlapping ones, and keeps only the first few distinct matching lines.
- * Tells whether any matches overlap.
- */
+// Counts overlapping matches too, and keeps the first few distinct lines.
 function matchingLines(text: string, needle: string) {
   const lines: number[] = [];
   let count = 0;
@@ -101,7 +93,7 @@ function matchingLines(text: string, needle: string) {
   return { count, lines, totalLines, overlapping };
 }
 
-/** One-based lines `from` through `to`, numbered and truncated for display. */
+// One-based, inclusive.
 function numberedLines(lines: readonly string[], from: number, to: number): string {
   const first = Math.max(1, from);
   const last = Math.min(lines.length, to);
@@ -112,7 +104,6 @@ function numberedLines(lines: readonly string[], from: number, to: number): stri
   return numbered.join("\n");
 }
 
-/** What the source has instead of text that is not in it, for the model to copy. */
 function notFound(source: string, text: string): string {
   const lines = text.split(/\r\n?|\n/);
   // A model may copy the numbers of the lines that a result quotes.
@@ -122,7 +113,7 @@ function notFound(source: string, text: string): string {
       return 'Leave out the line numbers, such as "12: ", that the lines are quoted with.';
     }
   }
-  // Or copy the line that stands for the values left out of the source as it was shown.
+  // Or copy the placeholder for left-out values.
   const leftOut = lines.find((line) => LEFT_OUT_VALUES.test(line) && !source.includes(line));
   if (leftOut !== undefined) {
     return `Its line ${JSON.stringify(leftOut.trim())} stands for lines left out of the source as it was shown to you: make the edit without that line, with text before or after it.`;
@@ -143,15 +134,14 @@ function notFound(source: string, text: string): string {
     : `The closest lines are:\n${numberedLines(source.split(/\r\n?|\n/), closest.from, closest.to)}`;
 }
 
-/** Where the text occurs in the source with other whitespace between its words, if it does. */
+// Ignoring whitespace differences.
 function looseMatch(source: string, text: string): { start: number; end: number } | undefined {
   const normalized = text.trim().replace(/\s+/g, " ");
   if (!normalized) return undefined;
   let start = source.replace(/\s+/g, " ").indexOf(normalized);
   if (start < 0) return undefined;
   let end = start + normalized.length;
-  // Translate the normalized offsets back to the source. A regex made from the words retries
-  // each repeated prefix in a large chart's data and can block the extension for seconds.
+  // A regex of the words would backtrack for seconds on a large chart's data.
   for (const gap of source.matchAll(/\s+/g)) {
     if (gap.index >= end) break;
     const extra = gap[0].length - 1;
@@ -161,17 +151,14 @@ function looseMatch(source: string, text: string): { start: number; end: number 
   return { start, end };
 }
 
-/** Closest source lines by shared adjacent characters, with surrounding context. */
 function closestLines(
   source: string,
   lines: readonly string[],
 ): { from: number; to: number } | undefined {
   const sourceLines = source.split(/\r\n?|\n/);
-  // The lines of the text that tell most, unless comparing them all takes too long.
   const budget = Math.max(1, Math.floor(MAX_COMPARED / Math.max(1, source.length)));
   const kept = lines.slice(0, budget).map(pairsOf);
-  // Each source line contributes to the matches that include it. Keep only their scores,
-  // rather than retaining a character-pair map for every row of a large chart.
+  // Only scores, not a pair map for every row of a large chart.
   const scores = new Float64Array(sourceLines.length);
   for (const [index, line] of sourceLines.entries()) {
     const pairs = pairsOf(line);
@@ -193,7 +180,6 @@ interface Pairs {
   total: number;
 }
 
-/** Adjacent character counts, with the total cached for comparisons against many lines. */
 function pairsOf(line: string): Pairs {
   const trimmed = line.trim();
   const pairs = new Map<string, number>();
@@ -204,9 +190,9 @@ function pairsOf(line: string): Pairs {
   return { counts: pairs, total: Math.max(0, trimmed.length - 1) };
 }
 
-/** The Sørensen–Dice coefficient of the pairs: 1 for the same ones, 0 for none in common. */
+// Sørensen–Dice.
 function similarity(a: Pairs, b: Pairs): number {
-  // A long replacement compared with many short data rows must not rescan all its pairs per row.
+  // Iterate the smaller one.
   if (a.counts.size > b.counts.size) [a, b] = [b, a];
   const size = a.total + b.total;
   let common = 0;
@@ -216,7 +202,6 @@ function similarity(a: Pairs, b: Pairs): number {
   return size === 0 ? 0 : (2 * common) / size;
 }
 
-/** Source excerpts around the reported error line, falling back to the changed lines. */
 export function errorContext(source: string, error: string, previous?: string): string {
   const place = /\(line (\d+), column \d+\)/.exec(error) ?? /\bon line (\d+)\b/.exec(error);
   if (place) {
@@ -234,7 +219,7 @@ export function errorContext(source: string, error: string, previous?: string): 
   );
 }
 
-/** E.g. "Lines 3-9 of the source:" and those lines, numbered, around the given one. */
+// As "Lines 3-9 of the source:" and the lines.
 function linesAround(source: string, line: number, what = "source"): string {
   return quotedLines(source, line - CONTEXT_LINES, line + CONTEXT_LINES, what);
 }
@@ -247,7 +232,6 @@ function quotedLines(source: string, from: number, to: number, what: string): st
   return `${lines} of the ${what}:\n${numberedLines(source.split(/\r\n?|\n/), first, last)}`;
 }
 
-/** The lines of `after` that differ from `before`, from the first to the last. */
 function changedLines(before: string, after: string): { from: number; to: number } {
   const shortest = Math.min(before.length, after.length);
   let prefix = 0;
