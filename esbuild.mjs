@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import * as esbuild from "esbuild";
@@ -36,25 +35,6 @@ const problemMatcherPlugin = {
 };
 
 /**
- * Prepend third-party licenses so exported HTML carries them without a separate notices file.
- * @type {import("esbuild").Plugin}
- */
-const noticesPlugin = {
-  name: "notices",
-  setup(build) {
-    build.onEnd(({ metafile }) => {
-      for (const [file, output] of Object.entries(metafile?.outputs ?? {})) {
-        const notices = thirdPartyNotices([{ outputs: { [file]: output } }], "This script");
-        const comment = notices && `/*!\n${notices.replaceAll("*/", "* /")}*/\n`;
-        const script = readFileSync(file, "utf8");
-        // Watch rebuilds may leave unchanged output files in place.
-        if (comment && !script.startsWith(comment)) writeFileSync(file, comment + script);
-      }
-    });
-  },
-};
-
-/**
  * Share Mermaid's version-specific ELK chunk with src/webview/mermaidLayout.ts.
  * @type {import("esbuild").Plugin}
  */
@@ -81,31 +61,15 @@ const common = {
   sourcemap: !production,
   sourcesContent: false,
   metafile: true,
-  // dist/THIRD_PARTY_NOTICES.txt and the saved page carry the licenses in full instead.
+  // dist/THIRD_PARTY_NOTICES.txt carries the licenses in full instead.
   legalComments: "none",
   logLevel: "silent",
   plugins: [problemMatcherPlugin],
 };
 
-/**
- * Classic scripts for lazy-loaded ECharts and exported charts. Exports embed standalone.js,
- * load ECharts from a CDN, and support browsers outside VS Code. Always minify them.
- */
-const classicScript = {
-  ...common,
-  format: "iife",
-  platform: "browser",
-  target: ["chrome120", "firefox120", "safari17"],
-  outdir: "dist",
-  minify: true,
-  sourcemap: false,
-  plugins: [noticesPlugin, problemMatcherPlugin],
-};
-
 // Chunk names are hashed, so start from scratch to not ship stale chunks.
 rmSync("dist", { recursive: true, force: true });
 mkdirSync("dist");
-writeFileSync("dist/cdn-integrity.json", JSON.stringify(cdnIntegrity()));
 
 // Keep the build targets compatible with the runtimes of the minimum supported VS Code version.
 const contexts = await Promise.all([
@@ -130,12 +94,18 @@ const contexts = await Promise.all([
     target: "chrome150",
     plugins: [mermaidElkPlugin, problemMatcherPlugin],
   }),
+  // A classic script, which the panel loads only to draw a chart. Always minified.
   esbuild.context({
-    ...classicScript,
+    ...common,
     entryPoints: { echarts: "src/webview/echartsLibrary.ts" },
+    format: "iife",
     globalName: "DiagramECharts",
+    platform: "browser",
+    target: "chrome150",
+    outdir: "dist",
+    minify: true,
+    sourcemap: false,
   }),
-  esbuild.context({ ...classicScript, entryPoints: { standalone: "src/webview/standalone.ts" } }),
 ]);
 
 if (watch) {
@@ -154,36 +124,6 @@ if (watch) {
       "@diagram",
     ),
   );
-}
-
-/**
- * The SRI hashes of the files that exported HTML loads from the CDN, by URL, so that the browser
- * loads only those the panel was built with.
- */
-function cdnIntegrity() {
-  const chunks = "dist/chunks/mermaid.esm.min";
-  const files = {
-    echarts: ["dist/echarts.esm.min.mjs"],
-    mermaid: [
-      "dist/mermaid.esm.min.mjs",
-      ...readdirSync(join("node_modules/mermaid", chunks))
-        .filter((file) => file.endsWith(".mjs"))
-        .sort()
-        .map((file) => `${chunks}/${file}`),
-    ],
-  };
-  const integrity = {};
-  for (const [name, paths] of Object.entries(files)) {
-    const dir = join("node_modules", name);
-    const { version } = JSON.parse(readFileSync(join(dir, "package.json"), "utf8"));
-    for (const file of paths) {
-      const hash = createHash("sha384")
-        .update(readFileSync(join(dir, file)))
-        .digest("base64");
-      integrity[`https://cdn.jsdelivr.net/npm/${name}@${version}/${file}`] = `sha384-${hash}`;
-    }
-  }
-  return integrity;
 }
 
 /**

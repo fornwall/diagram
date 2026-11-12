@@ -139,7 +139,7 @@ interface FenceMarker {
  * preview and GitHub do. The marker may also be ":::", which opens a block only as a mermaid
  * container.
  */
-export function fenceMarker(text: string): FenceMarker | undefined {
+function fenceMarker(text: string): FenceMarker | undefined {
   // Unicode line separators are not line endings in Markdown, so "." must match them.
   const match = /^(`{3,}|~{3,}|:{3,})(.*)$/s.exec(text);
   if (!match) {
@@ -367,7 +367,7 @@ function thematicBreakTail(line: string): number {
  * blocks are: in block quotes and list items, but not in indented code, HTML or a paragraph. A
  * line that ends a container also ends a code block in it.
  */
-export class FenceScanner {
+class FenceScanner {
   private readonly containers: Container[] = [];
   /** Whether the innermost container ends with a paragraph, which lines may continue lazily. */
   private paragraph = false;

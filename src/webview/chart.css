@@ -1,4 +1,4 @@
-/* What the chart renderer adds to the page, in the panel and in a saved chart. */
+/* What the chart renderer adds to the page. */
 
 /* The keyboard focus ring, drawn over the chart, out of the way of the pointer, and not part of
    an exported image. Its place and colors follow the focused item. */

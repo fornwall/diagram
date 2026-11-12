@@ -12,12 +12,6 @@
   font-weight: 600;
 }
 
-#explanation-caption {
-  margin: 6px 0;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
 #explanation-marks {
   margin: 6px 0;
   padding-left: 24px;

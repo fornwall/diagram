@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Six tools instead of twenty: render (now also from a file), edit, get state, get image, annotate and guide. Agents use their own tools to read files and run commands, and draw charts as ECharts options.
+- Removed the data-to-chart pipeline, Chart Options, Refresh, HTML export, drag-out, Highlight Path, picks, walkthroughs, drafts, checkpoints, evidence and graph tools.
+- The Diagram agent may use any tool.
+
 ## 0.11.0
 
 - Requires VS Code 1.145 or later. Mermaid 12.3 adds BPMN shapes and flowchart step animations. Images show steps at rest, and invalid steps are reported.

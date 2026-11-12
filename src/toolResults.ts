@@ -1,162 +1,55 @@
-// Shared responses for diagram, chart, guide and workspace tools.
-
 import * as vscode from "vscode";
-import { throwIfCancelled } from "./cancellation";
 import { LINK_SYNTAX } from "./links";
 import type { DiagramPanel, RenderOutcome } from "./panel";
-import {
-  CHART_TOOL,
-  type DiagramLanguage,
-  EDIT_TOOL,
-  errorMessage,
-  GET_STATE_TOOL,
-  RENDER_TOOL,
-  UPDATE_CHART_TOOL,
-} from "./protocol";
+import { type DiagramLanguage, EDIT_TOOL, RENDER_TOOL } from "./protocol";
 import { errorContext } from "./sourceEdits";
 import { formatCount, quoteAll } from "./text";
 
-/**
- * Warn about links to absent nodes. Keep the links in case a later edit adds those nodes. A model
- * corrects them without sending the source again.
- */
+/** Links to absent nodes are kept, in case a later edit adds those nodes. */
 export function linksWithoutNodes(
   ids: readonly string[],
   drawn: readonly string[] | undefined,
 ): string {
-  if (!drawn) {
-    return "";
-  }
   const known = new Set(drawn);
-  const unknown = ids.filter((id) => !known.has(id));
-  if (unknown.length === 0) {
-    return "";
-  }
-  return (
-    `\n\nThese links name nodes the diagram does not have, so nothing opens from them: ${quoteAll(unknown)}. ` +
-    `Its node ids are ${idList(drawn)}. Correct them with "links" in ${EDIT_TOOL}, e.g. {"newId": "src/file.ts#L3", "oldId": null}.`
-  );
+  const unknown = drawn ? ids.filter((id) => !known.has(id)) : [];
+  return unknown.length === 0
+    ? ""
+    : `\n\nThese links name nodes the diagram does not have: ${quoteAll(unknown)}. Its node ids are ${idList(drawn ?? [])}.`;
 }
 
-const MAX_LISTED_IDS = 40;
-
 export function idList(ids: readonly string[]): string {
-  const listed = quoteAll(ids.slice(0, MAX_LISTED_IDS));
-  const left = ids.length - MAX_LISTED_IDS;
-  return left > 0 ? `${listed} and ${formatCount(left)} more` : listed;
+  const listed = quoteAll(ids.slice(0, 40));
+  return ids.length > 40 ? `${listed} and ${formatCount(ids.length - 40)} more` : listed;
 }
 
 export function leftOutLinks(problems: readonly string[], language: DiagramLanguage): string {
-  if (problems.length === 0) {
-    return "";
-  }
-  // A chart takes no links, which no correction adds.
-  if (language === "echarts") {
-    return `\n\nThe links were left out. ${problems.join(" ")}`;
-  }
-  return (
-    `\n\nThese links were left out:\n- ${problems.join("\n- ")}\n` +
-    `A link is a path, absolute or relative to the first workspace folder, with an optional line: ` +
-    `${LINK_SYNTAX}. Correct them with "links" in ${EDIT_TOOL}.`
-  );
+  if (problems.length === 0) return "";
+  if (language === "echarts") return `\n\nThe links were left out. ${problems.join(" ")}`;
+  return `\n\nThese links were left out:\n- ${problems.join("\n- ")}\nA link is a workspace path with an optional line: ${LINK_SYNTAX}.`;
 }
 
-/** Render warnings, with advice to use chart settings for changes that regeneration would undo. */
-export function drawnWarnings(panel: DiagramPanel): string[] {
-  const { warnings } = panel;
-  if (warnings.length === 0) return [];
-  return panel.current?.chart ? [...warnings, GENERATED_CHART_FIXES] : [...warnings];
+export function warningsText(panel: DiagramPanel): string {
+  return panel.warnings.map((warning) => `\n\n${warning}`).join("");
 }
 
-const GENERATED_CHART_FIXES =
-  `Use ${UPDATE_CHART_TOOL} for chart settings (e.g. "type": "horizontalBar" for long labels), ` +
-  `and ${EDIT_TOOL} for layout and styling. Keep all requested categories and series; ` +
-  'use "limit", fewer "valueColumns" or aggregation only when the user requests that subset or summary.';
-
-/**
- * Distinguishes invalid source from a panel failure. Invalid edits remain in the panel, so include
- * source context for a follow-up fix. `changed` describes the edit, e.g. "edited" or "colored".
- */
-export function editFailure(
+/** A render failure, with the lines around a source error. */
+export function failureText(
   outcome: Extract<RenderOutcome, { ok: false }>,
   noun: string,
-  changed: string,
-  edited: string,
-  previous: string,
-): [string, ...string[]] {
-  if (outcome.kind === "unavailable") {
-    return [
-      `The ${noun} was ${changed}, but the panel could not show it: ${outcome.error} This is not a problem with the change, and the panel may still be drawing it: ${GET_STATE_TOOL} says whether it is shown.`,
-    ];
-  }
-  return [
-    `The ${changed} ${noun} failed to render with this error:`,
-    outcome.error,
-    errorContext(edited, outcome.error, previous),
-    `The panel shows it with this error. Fix it with ${EDIT_TOOL}.`,
-  ];
-}
-
-export function renderFailure(
-  outcome: Extract<RenderOutcome, { ok: false }>,
-  noun: string,
-  tool: string,
-  fix: string,
+  source: string,
+  previous?: string,
 ): string {
-  return outcome.kind === "invalid"
-    ? `The ${noun} failed to render with this error:\n\n${outcome.error}\n\n${fix}`
-    : `The ${noun} could not be shown: ${outcome.error} This is not a problem with the ${noun}, and the panel may still be drawing it: ${GET_STATE_TOOL} says whether it is shown. Call ${tool} again only to reopen a closed panel, if the user still wants to see it.`;
+  if (outcome.kind === "unavailable") {
+    return `The panel could not show the ${noun}: ${outcome.error} The panel may still be drawing it.`;
+  }
+  const context = errorContext(source, outcome.error, previous);
+  return `The ${noun} fails to render:\n\n${outcome.error}${context ? `\n\n${context}` : ""}\n\nThe panel shows the error. Fix it with ${EDIT_TOOL} or ${RENDER_TOOL}.`;
 }
 
 export function noDiagram(action: string): string {
-  return `There is no diagram to ${action}. Render one with ${RENDER_TOOL} or ${CHART_TOOL} first.`;
+  return `There is no diagram to ${action}. Render one with ${RENDER_TOOL} first.`;
 }
 
 export function textResult(text: string): vscode.LanguageModelToolResult {
   return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart(text)]);
-}
-
-/** Append the revision for subsequent edits. */
-export function drawnResult(text: string, revision: number): vscode.LanguageModelToolResult {
-  return textResult(`${text}\n\nRevision: ${revision}.`);
-}
-
-/** A change summary, with the rendered revision when the tool drew something. */
-export interface Answer {
-  paragraphs: [string, ...string[]];
-  drawn?: number | undefined;
-}
-
-/**
- * Validate and apply a change, turning failures into tool responses while propagating cancellation.
- * Every response includes the current revision.
- */
-export async function changeResult<T>(
-  panel: DiagramPanel,
-  token: vscode.CancellationToken,
-  nothing: string,
-  tool: string,
-  parse: () => T,
-  change: (input: T) => Promise<Answer>,
-): Promise<vscode.LanguageModelToolResult> {
-  throwIfCancelled(token);
-  let input: T;
-  try {
-    input = parse();
-  } catch (error) {
-    return textResult(
-      `${nothing}, as the input is invalid. Fix it and call ${tool} again. Revision: ${panel.revision}.\n\n${errorMessage(error)}`,
-    );
-  }
-  let answer: Answer;
-  try {
-    answer = await change(input);
-  } catch (error) {
-    if (error instanceof vscode.CancellationError) throw error;
-    answer = { paragraphs: [`${nothing}: ${errorMessage(error)}`] };
-  }
-  const [first, ...rest] = answer.paragraphs.filter(Boolean);
-  return answer.drawn === undefined
-    ? textResult([`${first} Revision: ${panel.revision}.`, ...rest].join("\n\n"))
-    : drawnResult([first, ...rest].join("\n\n"), answer.drawn);
 }

@@ -4,15 +4,6 @@ import { afterTest } from "./afterTest";
 import { within } from "./newPanel";
 import { suitePage } from "./webviewHarness";
 
-/** A timeline too wide for a panel 350 px wide, but not for the panel that the tests draw in. */
-const TIMELINE = "timeline\n  2023 : Prototype\n  2024 : Beta\n  2025 : 1.0\n  2026 : 2.0";
-
-/** An XY chart, which the panel lays out again at its width, of more labels than fit. */
-const XY_CHART = (() => {
-  const months = Array.from({ length: 30 }, (_, i) => `month-${i}`);
-  return `xychart\n  x-axis [${months.join(", ")}]\n  bar [${months.map((_, i) => i).join(", ")}]`;
-})();
-
 /** An ECharts bar chart of more named categories than fit across a narrow panel. */
 const BARS = JSON.stringify({
   xAxis: {
@@ -55,38 +46,21 @@ suite("Warnings of a drawing in the webview as the panel changes size", function
     return drawn;
   };
 
-  for (const [name, diagram] of [
-    ["a Mermaid diagram measured against the panel's width", { source: TIMELINE }],
-    ["a Mermaid chart laid out at the panel's width", { source: XY_CHART }],
-    ["an ECharts chart", { language: "echarts", source: BARS }],
-  ] as const) {
-    test(`tells the extension the warnings of ${name} drawn for a new width`, async () => {
-      const narrow = await drawnAt(diagram, "350px");
-      const wide = await drawnAt(diagram, "");
-      assert.notDeepStrictEqual(narrow, wide, "The warnings differ with the width.");
-      // As the user resizes the panel.
-      await width("350px");
-      assert.ok(
-        await within(() => JSON.stringify(page.panel.warnings) === JSON.stringify(narrow)),
-        `${JSON.stringify(page.panel.warnings)} for ${JSON.stringify(narrow)}`,
-      );
-      await width("");
-      assert.ok(
-        await within(() => JSON.stringify(page.panel.warnings) === JSON.stringify(wide)),
-        `${JSON.stringify(page.panel.warnings)} for ${JSON.stringify(wide)}`,
-      );
-    });
-  }
-
-  test("answers a render as drawn whose warnings fail to be read, without them", async () => {
-    // As of a check of the drawing that fails, here measuring the width of the panel.
-    await evaluate(`void Object.defineProperty(document.body, "clientWidth", {
-      configurable: true,
-      get() { throw new Error("A check failed."); },
-    })`);
-    afterTest(() => evaluate("delete document.body.clientWidth"));
-    const outcome = await page.render({ source: TIMELINE });
-    assert.ok(outcome.ok, outcome.ok ? "" : outcome.error);
-    assert.deepStrictEqual(page.panel.warnings, []);
+  test("tells the extension the warnings of an ECharts chart drawn for a new width", async () => {
+    const diagram = { language: "echarts", source: BARS } as const;
+    const narrow = await drawnAt(diagram, "350px");
+    const wide = await drawnAt(diagram, "");
+    assert.notDeepStrictEqual(narrow, wide, "The warnings differ with the width.");
+    // As the user resizes the panel.
+    await width("350px");
+    assert.ok(
+      await within(() => JSON.stringify(page.panel.warnings) === JSON.stringify(narrow)),
+      `${JSON.stringify(page.panel.warnings)} for ${JSON.stringify(narrow)}`,
+    );
+    await width("");
+    assert.ok(
+      await within(() => JSON.stringify(page.panel.warnings) === JSON.stringify(wide)),
+      `${JSON.stringify(page.panel.warnings)} for ${JSON.stringify(wide)}`,
+    );
   });
 });

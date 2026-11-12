@@ -56,11 +56,13 @@ export function instrumentWebview(panel: DiagramPanel): WebviewHarness {
         /** Each state that the page saved since it loaded, or since a test emptied the list. */
         window.testSavedStates = [];
         window.testRenderResults = [];
+        window.testExports = new Map();
         window.receive = (data) => window.dispatchEvent(new MessageEvent("message", {data}));
         const postMessage = (message) => {
           if (/^render(ed|Error)$/.test(message.type)) {
             window.testRenderResults.push(message.requestId);
           }
+          if (/^export(Image|Error)$/.test(message.type)) window.testExports.set(message.requestId, message);
           return api.postMessage(message);
         };
         window.addEventListener("message", async ({data}) => {
@@ -260,30 +262,23 @@ export const UNTIL = `
   };`;
 
 /**
- * Webview code, with {@link UNTIL}, that waits for the page to have the focus, for code that moves
- * or reads it: VS Code focuses a panel, as showing Chart Options does, by taking the focus out of
- * the page and, 50 ms later, giving it back to what had it, and meanwhile the page has none.
- */
-export const FOCUSED = `${UNTIL}
-  await until(() => document.hasFocus(), "the focus in the page");`;
-
-/**
- * Webview code defining `dragImage(init)`: the SVG that dragging the drawing out of the panel
- * carries, once the image is ready, with the pointer pressed on the handle as `init` says, such as
- * with Shift.
+ * Webview code defining `svgImage()`: the drawing exported as SVG, once the page has drawn it.
  * It keeps its `until` to itself, for expressions that define their own.
  */
-export const DRAG_IMAGE = `
-  const dragImage = (() => {
+export const SVG_IMAGE = `
+  const svgImage = (() => {
     ${UNTIL}
-    return async (init) => {
-      const handle = document.getElementById("drag-out");
-      handle.dispatchEvent(new PointerEvent("pointerenter"));
-      if (init) handle.dispatchEvent(new PointerEvent("pointerdown", init));
-      return until(() => {
-        const dataTransfer = new DataTransfer();
-        handle.dispatchEvent(new DragEvent("dragstart", {dataTransfer, cancelable: true}));
-        return dataTransfer.getData("image/svg+xml");
-      }, "the drag image");
+    return async () => {
+      for (;;) {
+        // Ids apart from the extension's, and from those of earlier expressions.
+        const id = (window.svgImageId = (window.svgImageId ?? 1e9) + 1);
+        const renderRequestId = testRenderResults.at(-1);
+        receive({type: "export", requestId: id, renderRequestId, format: "svg", forModel: false});
+        const result = await until(() => testExports.get(id), "the SVG image");
+        if (result.type === "exportImage") return result.data;
+        if (renderRequestId === testRenderResults.at(-1) || performance.now() > testDeadline) {
+          throw new Error(result.message);
+        }
+      }
     };
   })();`;

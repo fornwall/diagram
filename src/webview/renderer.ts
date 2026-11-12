@@ -38,8 +38,6 @@ export interface Renderer {
   showMarks(annotation: Annotation): void;
   /** Enumerable nodes and relationships; charts do not enumerate their data items. */
   drawnNodes?(): DiagramNode[];
-  /** Enumerates chart identities on demand, including items hidden by legend or zoom. */
-  eachItem?(visit: (node: DiagramNode) => void, includeData?: boolean): void;
   /** The chart items of the ids, in their order, as a click on each selects it. */
   hitsOf?(ids: readonly string[]): Hit[];
   /** Bounds of a visible item in client coordinates, for explanation callouts. */
@@ -48,9 +46,6 @@ export interface Renderer {
   repeatedNames?(): RepeatedName[];
   /** What a model should know about parts of the source that the rendering leaves out. */
   warnings?(): string[];
-  /** Whether the current drawing supports path selection between its nodes. */
-  readonly supportsPaths?: boolean;
-  findPath?(from: string, to: string): DiagramNode[] | undefined;
   /** Adds code links and location tooltips to Mermaid nodes, keyed by node id. */
   showLinks?(locations: ReadonlyMap<string, string>): void;
   /** Whether links in the source lead from some nodes. */

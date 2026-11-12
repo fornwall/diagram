@@ -72,7 +72,7 @@ suite("Mermaid recovery in diagram_render", function () {
     afterTest(() => page.evaluate('document.getElementById("view-visual").click()'));
     const source = "flowchart TD\n  A[Call foo(x)] --> B[Call bar(y)]";
     const result = await invokeTool(new RenderDiagramTool(page.panel), { source });
-    assert.match(result, /^The diagram failed to render/);
+    assert.match(result, /^The diagram fails to render/);
     assert.match(result, /unexpected "\(".*A\["Call foo\(x\)"\]/);
     assert.match(result, /Automatic repair failed; kept the original source/);
     assert.strictEqual(page.panel.current?.source, source);
@@ -90,7 +90,7 @@ suite("Mermaid recovery in diagram_render", function () {
 
     const invalid = "flowchart TD\n  A --> --> B[";
     const failure = await invokeTool(new RenderDiagramTool(page.panel), { source: invalid });
-    assert.match(failure, /^The diagram failed to render/);
+    assert.match(failure, /^The diagram fails to render/);
     assert.doesNotMatch(failure, /Automatic repair/);
     assert.strictEqual(page.panel.current?.source, invalid);
 

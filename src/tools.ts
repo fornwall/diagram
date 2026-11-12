@@ -1,13 +1,12 @@
-// The tools for any diagram in the panel: diagram_render, diagram_getState, diagram_getImage,
-// diagram_pickNodes and diagram_annotate.
+// diagram_render, diagram_getState, diagram_getImage and diagram_annotate.
 
 import * as vscode from "vscode";
-import { type AnnotateInput, annotationFrame, validateAnnotation } from "./annotations";
+import { type AnnotateInput, validateAnnotation } from "./annotations";
 import { guessTitle } from "./blocks";
 import { throwIfCancelled, unlessCancelled } from "./cancellation";
-import { nodeList, repeatedList } from "./describe";
-import { compareSnapshots } from "./diagramHistory";
+import { repeatedList } from "./describe";
 import { isClosingFence, openingFence } from "./fences";
+import { decodeFile, inWorkspace, resolveFile } from "./files";
 import { type ItemNames, type Resolved, resolvedList, severalList } from "./itemNames";
 import { validateLinks, withoutMissingFiles } from "./links";
 import type { Diagram, DiagramPanel } from "./panel";
@@ -16,132 +15,84 @@ import {
   type Annotation,
   type DiagramLanguage,
   diagramNoun,
-  EDIT_TOOL,
   errorMessage,
   GET_IMAGE_TOOL,
-  GET_STATE_TOOL,
   type ImageView,
   isDiagramLanguage,
   isPlainObject,
   nodeNoun,
-  RENDER_TOOL,
 } from "./protocol";
-import { renderOptions } from "./renderOptions";
-import { errorContext } from "./sourceEdits";
-import { itemPageText } from "./stateItems";
-import { searchSource } from "./stateSearch";
-import { parseStateInput, type StateInput, sourcePage } from "./stateSource";
-import { givenProperties, nonBlank, plural, quoteAll, unknownProperties } from "./text";
-import { checkedRevision, fitsToolResult } from "./toolContracts";
+import { nonBlank, plural, quoteAll } from "./text";
 import {
-  drawnResult,
-  drawnWarnings,
+  failureText,
   idList,
   leftOutLinks,
   linksWithoutNodes,
   noDiagram,
-  renderFailure,
   textResult,
+  warningsText,
 } from "./toolResults";
 import { formatOption } from "./webview/optionSource";
 
-/** As declared in package.json, but a model may not follow the schema exactly. */
 interface RenderInput {
-  source: string;
-  revision?: number;
-  newDiagram?: boolean;
+  source?: string;
+  file?: string;
   language?: string;
   title?: string;
   clickPrompt?: string;
   links?: Record<string, string>;
 }
 
-interface PickNodesInput {
-  prompt: string;
-  multiple?: boolean;
-}
-
-/** The question and whether several items may be picked, or what to fix in the input. */
-function parsePickInput(value: unknown): { prompt: string; multiple: boolean } | string {
-  const input = isPlainObject(value) ? givenProperties(value) : {};
-  const prompt = nonBlank(input.prompt);
-  if (!prompt) {
-    return 'Give "prompt", the question to show the user.';
-  }
-  if (input.multiple !== undefined && typeof input.multiple !== "boolean") {
-    return '"multiple" must be true or false.';
-  }
-  const unknown = unknownProperties(input, ["prompt", "multiple"]);
-  return unknown ?? { prompt, multiple: input.multiple === true };
-}
-
-const RENDER_KEYS = [
-  "source",
-  "revision",
-  "newDiagram",
-  "language",
-  "title",
-  "clickPrompt",
-  "links",
-] as const satisfies readonly (keyof RenderInput)[];
-
-/**
- * Invalid links are reported in `problems`, and other invalid or unknown properties in `ignored`;
- * an invalid source prevents rendering.
- */
-function parseRenderInput(
-  value: RenderInput,
-): { diagram: Diagram; problems: string[]; ignored: string[] } | string {
-  // Some models send null for the properties they leave out.
-  const input = isPlainObject(value) ? givenProperties(value) : {};
+/** The diagram to render, with any problems with its links, or what to fix in the input. */
+async function parseRenderInput(
+  value: unknown,
+): Promise<{ diagram: Diagram; problems: string[] } | string> {
+  const input = isPlainObject(value) ? value : {};
   // As a model may write it: "Mermaid", "ECharts".
-  let language = input.language;
-  if (typeof language === "string") language = language.toLowerCase();
-  // Models sometimes send an ECharts option as an object despite the schema. Sending it again as a
-  // string would cost as much.
-  if (isPlainObject(input.source) && (language ?? "echarts") === "echarts") {
-    input.source = formatOption(JSON.stringify(input.source));
-  }
-  if (typeof input.source !== "string") {
-    return 'Give "source", the complete diagram, as a string.';
-  }
+  let language = typeof input.language === "string" ? input.language.toLowerCase() : undefined;
   let source = input.source;
-  // Models sometimes include a Markdown fence despite the schema. Use the same rules as chat.
-  const trimmed = source.trim();
+  const file = nonBlank(input.file);
+  if (file) {
+    try {
+      const uri = resolveFile(file);
+      source = await decodeFile(await vscode.workspace.fs.readFile(uri), uri);
+    } catch (error) {
+      return `Could not read ${file}: ${errorMessage(error)}`;
+    }
+    if (/\.(?:mmd|mermaid)$/i.test(file)) language ??= "mermaid";
+  }
+  // Models sometimes send an ECharts option as an object despite the schema.
+  if (isPlainObject(source) && (language ?? "echarts") === "echarts") {
+    source = formatOption(JSON.stringify(source));
+  }
+  let text = typeof source === "string" ? source : "";
+  // Models sometimes include a Markdown fence despite the schema.
+  const trimmed = text.trim();
   const firstNewline = trimmed.indexOf("\n");
   const lastNewline = trimmed.lastIndexOf("\n");
   const opening = firstNewline < 0 ? undefined : openingFence(trimmed.slice(0, firstNewline));
   if (opening && isClosingFence(trimmed.slice(lastNewline + 1), opening)) {
-    source = trimmed.slice(firstNewline + 1, lastNewline);
+    text = trimmed.slice(firstNewline + 1, lastNewline);
     language ??= opening.language;
   }
-  if (!source.trim()) {
-    return 'Give "source", the complete diagram, as a string.';
+  if (!text.trim()) {
+    return 'Give "source", the complete diagram as a string, or "file", a file with it.';
   }
-  // Mermaid source never starts with "{", so a model that left out the language means ECharts.
-  language ??= source.trimStart().startsWith("{") ? "echarts" : "mermaid";
+  // Mermaid source never starts with "{".
+  language ??= text.trimStart().startsWith("{") ? "echarts" : "mermaid";
   if (!isDiagramLanguage(language)) {
-    return `Unknown language ${JSON.stringify(language)}: use "mermaid" for Mermaid source or "echarts" for an ECharts option as JSON or JavaScript.`;
+    return `Unknown language ${JSON.stringify(language)}: use "mermaid" or "echarts".`;
   }
   const { links, problems } = validateLinks(input.links, language);
-  // A misnamed or mistyped property, such as "clickprompt", would otherwise be lost without a word.
-  const ignored = (["title", "clickPrompt"] as const)
-    .filter((key) => input[key] !== undefined && typeof input[key] !== "string")
-    .map((key) => `"${key}" must be a string, so it was ignored.`);
-  const unknown = unknownProperties(input, RENDER_KEYS);
-  if (unknown) {
-    ignored.push(`${unknown} Unknown properties are ignored.`);
-  }
   return {
     diagram: {
       language,
-      source,
-      title: nonBlank(input.title) ?? guessTitle({ language, source }),
+      source: text,
+      title: nonBlank(input.title) ?? guessTitle({ language, source: text }),
       clickPrompt: nonBlank(input.clickPrompt),
       links,
     },
     problems,
-    ignored,
   };
 }
 
@@ -151,239 +102,86 @@ export class RenderDiagramTool implements vscode.LanguageModelTool<RenderInput> 
   prepareInvocation(
     options: vscode.LanguageModelToolInvocationPrepareOptions<RenderInput>,
   ): vscode.PreparedToolInvocation {
-    const parsed = parseRenderInput(options.input);
-    return {
-      invocationMessage:
-        typeof parsed === "string"
-          ? "Rendering a diagram"
-          : `Rendering ${diagramNoun(parsed.diagram.language)} "${parsed.diagram.title}"`,
-    };
+    const title = nonBlank(options.input?.title);
+    const invocationMessage = title ? `Rendering "${title}"` : "Rendering a diagram";
+    const file = nonBlank(options.input?.file);
+    let outside = false;
+    try {
+      outside = file !== undefined && !inWorkspace(resolveFile(file));
+    } catch {}
+    return outside
+      ? {
+          invocationMessage,
+          confirmationMessages: {
+            title: "Render a file outside the workspace?",
+            message: `Read ${file} to render it in the diagram panel.`,
+          },
+        }
+      : { invocationMessage };
   }
 
   async invoke(
     options: vscode.LanguageModelToolInvocationOptions<RenderInput>,
     token: vscode.CancellationToken,
   ): Promise<vscode.LanguageModelToolResult> {
-    throwIfCancelled(token);
     const changes = this.panel.userChangeCount;
-    let replacement: ReturnType<typeof renderOptions>;
-    try {
-      replacement = renderOptions(options.input, this.panel.revision);
-    } catch (error) {
-      return textResult(`Nothing was rendered: ${errorMessage(error)}`);
-    }
-    const parsed = parseRenderInput(options.input);
-    if (typeof parsed === "string") {
-      return textResult(`Nothing was rendered: ${parsed}`);
-    }
+    const parsed = await unlessCancelled(() => parseRenderInput(options.input), token);
+    if (typeof parsed === "string") return textResult(`Nothing was rendered: ${parsed}`);
     const { diagram, problems } = parsed;
-    const ignored = parsed.ignored.length > 0 ? `\n\n${parsed.ignored.join(" ")}` : "";
-    const { links } = diagram;
-    if (links) {
-      const existing = await unlessCancelled(() => withoutMissingFiles(links), token);
+    if (diagram.links) {
+      const existing = await unlessCancelled(() => withoutMissingFiles(diagram.links ?? {}), token);
       diagram.links = existing.links;
       problems.push(...existing.problems);
     }
-    if (this.panel.userChangeCount !== changes || this.panel.revision !== replacement.revision) {
+    if (this.panel.userChangeCount !== changes) {
       return textResult(
-        "Nothing was rendered because the diagram changed in the panel while its code links were checked. Read diagram_getState before making further changes.",
+        "Nothing was rendered, as the user changed the diagram meanwhile. Read diagram_getState first.",
       );
     }
     const outcome = await unlessCancelled(
-      () => this.panel.render(diagram, "tool", undefined, { ...replacement, repairMermaid: true }),
+      () => this.panel.render(diagram, "tool", { repairMermaid: true }),
       token,
     );
     const noun = diagramNoun(diagram.language);
-    if (outcome.ok) {
-      return drawnResult(
-        [
-          `Rendered the ${outcome.diagramType} ${noun} in the diagram panel next to the chat.`,
-          ...(outcome.repair ? [`Automatic repair: ${outcome.repair.description}`] : []),
-          ...drawnWarnings(this.panel),
-        ].join("\n\n") +
-          leftOutLinks(problems, diagram.language) +
-          linksWithoutNodes(Object.keys(diagram.links ?? {}), this.panel.drawnIds) +
-          ignored,
-        outcome.revision,
-      );
-    }
-    const fix =
-      diagram.language === "echarts"
-        ? "Fix the ECharts option (JSON, or a JavaScript object literal for callbacks such as renderItem)"
-        : "Fix the Mermaid syntax";
-    // The lines around the error, to fix with an edit of the source that the panel shows.
-    const context = errorContext(diagram.source, outcome.error);
-    return drawnResult(
-      renderFailure(
-        outcome,
-        noun,
-        RENDER_TOOL,
-        `${context ? `${context}\n\n` : ""}${fix} with ${EDIT_TOOL}, or call ${RENDER_TOOL} again with the complete corrected source.`,
-      ) +
+    const text = outcome.ok
+      ? `Rendered the ${outcome.diagramType} ${noun} in the diagram panel.` +
+        (outcome.repair ? `\n\nAutomatic repair: ${outcome.repair.description}` : "") +
+        warningsText(this.panel)
+      : failureText(outcome, noun, diagram.source);
+    return textResult(
+      text +
         leftOutLinks(problems, diagram.language) +
-        ignored,
-      outcome.revision,
+        (outcome.ok
+          ? linksWithoutNodes(Object.keys(diagram.links ?? {}), this.panel.drawnIds)
+          : ""),
     );
   }
 }
 
-export class GetDiagramStateTool implements vscode.LanguageModelTool<StateInput> {
+export class GetDiagramStateTool implements vscode.LanguageModelTool<unknown> {
   constructor(private readonly panel: DiagramPanel) {}
 
   prepareInvocation(): vscode.PreparedToolInvocation {
     return { invocationMessage: "Reading the diagram panel" };
   }
 
-  async invoke(
-    options: vscode.LanguageModelToolInvocationOptions<StateInput>,
-    token: vscode.CancellationToken,
-  ): Promise<vscode.LanguageModelToolResult> {
-    throwIfCancelled(token);
-    let input: StateInput;
-    try {
-      input = parseStateInput(options.input);
-    } catch (error) {
-      return textResult(`The diagram was not read: ${errorMessage(error)}`);
-    }
-    const current = this.panel.current;
-    if (!current) return textResult(noDiagram("read"));
-    const { source: exactSource, language } = current;
-    const revision = this.panel.revision;
-    const room = options.tokenizationOptions;
-    const fitting = async (text: string) =>
-      room ? await fits(text, room, token) : text.length <= MAX_UNBUDGETED_LENGTH;
-    if (input.detail === "changes") {
-      const since = input.sinceRevision as number;
-      if (since > revision)
-        return textResult(
-          `Revision ${since} is newer than the current revision, ${revision}. Give a revision that diagram_getState or a change reported.`,
-        );
-      const previous = this.panel.history.at(since);
-      if (!previous)
-        return textResult(
-          `Revision ${input.sinceRevision} is no longer in session history. Current revision: ${revision}. Read the current state instead.`,
-        );
-      const report = JSON.stringify(compareSnapshots(previous, this.panel.snapshot()));
-      return textResult(
-        (await fitting(report))
-          ? report
-          : `Changes from revision ${input.sinceRevision} to ${revision} exceed the result budget. Read the current summary and source ranges instead.`,
-      );
-    }
-    if (input.detail === "items") {
-      const page = await unlessCancelled(
-        () =>
-          this.panel.readItems({
-            query: input.query,
-            startItem: input.startItem ?? 1,
-            maxItems: input.maxItems ?? 50,
-          }),
-        token,
-      );
-      if (revision !== this.panel.revision) {
-        return textResult(
-          "The diagram changed while reading items. Read the current state and retry.",
-        );
-      }
-      return textResult(
-        typeof page === "string" ? page : await itemPageText(page, revision, fitting),
-      );
-    }
-    const metadataTooLarge =
-      `Revision: ${revision}. The diagram's metadata does not fit the available result budget. ` +
-      'Use a larger tool result budget or a new chat. To read exact source lines instead, call diagram_getState with "startLine" and "endLine".';
-    if (input.detail === "source" || input.detail === "search") {
-      return textResult(
-        exactSource === undefined
-          ? `Revision: ${revision}. The source was not kept when VS Code closed. The user can press Refresh to load the chart's data again.`
-          : await (input.detail === "search" ? searchSource : sourcePage)(
-              exactSource,
-              language,
-              revision,
-              input,
-              fitting,
-            ),
-      );
-    }
-    // Snapshot every candidate before token counting yields: an edit during a slow count must
-    // not mix one revision's full description with another revision's fallback source.
-    if (input.detail === "summary") {
-      const summary = this.panel.describeForModel({ detail: "metadata" }) ?? noDiagram("read");
-      return textResult((await fitting(summary)) ? summary : metadataTooLarge);
-    }
-    // A source too long to repeat in every chat request is given in full here, as a model has to
-    // read it to change it, unless it does not fit, as the caller would cut it short.
-    const full = this.panel.describeForModel({ detail: "full" });
-    if (full === undefined) {
-      return textResult(noDiagram("read"));
-    }
-    const source = this.panel.describeForModel({ detail: "source" });
-    const summary = this.panel.describeForModel({ detail: "summary" });
-    const metadata = this.panel.describeForModel({ detail: "metadata" });
-    if (await fitting(full)) return textResult(full);
-    // The source, which a model needs to change the diagram, before a long list of relationships.
-    if (source !== undefined && source !== full && (await fitting(source))) {
-      return textResult(source);
-    }
-    if (summary !== undefined && (await fitting(summary))) return textResult(summary);
-    // An elided chart option can still be large. Keep the selection, errors and other context
-    // without source when those fit; never hand an oversized fallback to the caller to truncate.
-    if (metadata !== undefined && metadata !== summary && (await fitting(metadata))) {
-      return textResult(metadata);
-    }
-    return textResult(metadataTooLarge);
+  invoke(): vscode.LanguageModelToolResult {
+    return textResult(this.panel.describeForModel() ?? noDiagram("read"));
   }
-}
-
-/**
- * A description longer than this, as of a chart of much data, is given as a summary to a caller
- * that gives no token budget: about 30,000 tokens.
- */
-const MAX_UNBUDGETED_LENGTH = 100_000;
-
-/**
- * A token rarely stands for more than 10 characters, and typically for 3 or 4. Text longer than
- * this many characters for each token of the budget does not fit, without counting its tokens,
- * which takes long for megabytes of it.
- */
-const MAX_CHARS_PER_TOKEN = 10;
-
-/** Whether the text fits the token budget, counted only when its length does not tell. */
-async function fits(
-  text: string,
-  { tokenBudget, countTokens }: vscode.LanguageModelToolTokenizationOptions,
-  token: vscode.CancellationToken,
-): Promise<boolean> {
-  // A token takes at least a byte of UTF-8, which takes at most 3 for each UTF-16 code unit.
-  if (text.length * 3 <= tokenBudget) return true;
-  if (text.length > tokenBudget * MAX_CHARS_PER_TOKEN) return false;
-  return fitsToolResult(text, { tokenBudget, countTokens }, token, Infinity);
 }
 
 interface ImageInput {
   ids?: string[];
-  revision?: number;
 }
 
-/** The ids of the items to show the part of the drawing around, or what to fix in the input. */
-function parseImageInput(value: unknown): string[] | string {
-  const input = isPlainObject(value) ? givenProperties(value) : {};
-  const unknown = unknownProperties(input, ["ids", "revision"]);
-  if (unknown) return unknown;
-  // A model may give one id as it is.
-  const ids = typeof input.ids === "string" ? [input.ids] : (input.ids ?? []);
-  if (!Array.isArray(ids) || !ids.every((id) => typeof id === "string")) {
-    return '"ids" must be an array of item ids, such as ["A", "A --> B"].';
-  }
-  return [...new Set(ids)];
+/** A model may give one id as it is. */
+function imageIds(input: unknown): string[] {
+  const ids = isPlainObject(input) ? input.ids : undefined;
+  const given = typeof ids === "string" ? [ids] : Array.isArray(ids) ? ids : [];
+  return [...new Set(given.filter((id): id is string => typeof id === "string"))];
 }
 
-/**
- * The longest side of an image for a model, and the most pixels in all, as Claude takes them
- * without scaling them down, at about 1,500 tokens. Models of other vendors scale an image with a
- * side as long down further, but one that long only for a long and narrow drawing, such as a
- * flowchart from left to right.
- */
+/** About 1,500 tokens, which Claude takes without scaling down. */
 const IMAGE_LIMITS = { maxSide: 1568, maxPixels: 1_150_000 };
 /** How many pixels high text must be in an image for a model to read it. */
 const LEGIBLE_TEXT = 8;
@@ -395,10 +193,10 @@ export class GetDiagramImageTool implements vscode.LanguageModelTool<ImageInput>
     options: vscode.LanguageModelToolInvocationPrepareOptions<ImageInput>,
   ): vscode.PreparedToolInvocation {
     const noun = diagramNoun(this.panel.current?.language ?? "mermaid");
-    const ids = parseImageInput(options.input);
+    const ids = imageIds(options.input);
     return {
       invocationMessage:
-        typeof ids === "string" || ids.length === 0
+        ids.length === 0
           ? `Viewing the ${noun}`
           : `Viewing ${ids.length <= 3 ? quoteAll(ids) : plural(ids.length, "item")} in the ${noun}`,
     };
@@ -412,15 +210,7 @@ export class GetDiagramImageTool implements vscode.LanguageModelTool<ImageInput>
     if (!current) {
       return textResult(noDiagram("view"));
     }
-    try {
-      checkedRevision(isPlainObject(options.input) ? options.input.revision : undefined, revision);
-    } catch (error) {
-      return textResult(`There is no image to view: ${errorMessage(error)}`);
-    }
-    const ids = parseImageInput(options.input);
-    if (typeof ids === "string") {
-      return textResult(`There is no image to view: ${ids}`);
-    }
+    const ids = imageIds(options.input);
     // Reopening the panel redraws its items, including the ids behind relationship names.
     if (ids.length > 0) await unlessCancelled(() => this.panel.itemIds(), token);
     if (this.panel.revision !== revision) {
@@ -429,8 +219,6 @@ export class GetDiagramImageTool implements vscode.LanguageModelTool<ImageInput>
       );
     }
     const noun = diagramNoun(current.language);
-    // A model is told the items of a Mermaid diagram, which the panel knows, and may name an edge
-    // or message by its ends, all of those between them; the page tells of the items of others.
     const names = this.panel.itemNames;
     const named = names?.resolveAll(ids) ?? ids.map((id) => ({ name: id, ids: [id] }));
     if (ids.length > 0 && names && named.every((item) => item.ids.length === 0)) {
@@ -438,7 +226,7 @@ export class GetDiagramImageTool implements vscode.LanguageModelTool<ImageInput>
       return textResult(
         `There is no image to view: no item of the ${noun} has these ids: ${resolvedList(named)}. ` +
           (items.length > 0
-            ? `Its items are ${idList(items)}. Use ${GET_STATE_TOOL} with detail:"items" and query to find exact ids.`
+            ? `Its items are ${idList(items)}.`
             : `It has no items to show alone: call ${GET_IMAGE_TOOL} without "ids".`),
       );
     }
@@ -449,10 +237,10 @@ export class GetDiagramImageTool implements vscode.LanguageModelTool<ImageInput>
     }
     if (this.panel.revision !== revision) {
       return textResult(
-        "There is no image to view. The diagram changed during capture. Read diagram_getState and retry.",
+        "There is no image to view. The diagram changed during capture. Try again.",
       );
     }
-    const about = `Revision ${revision} of the ${noun}`;
+    const about = `The ${noun}`;
     return new vscode.LanguageModelToolResult([
       new vscode.LanguageModelTextPart(
         image.view
@@ -534,34 +322,6 @@ function describeImage(
   );
 }
 
-export class PickDiagramNodesTool implements vscode.LanguageModelTool<PickNodesInput> {
-  constructor(private readonly panel: DiagramPanel) {}
-
-  prepareInvocation(
-    options: vscode.LanguageModelToolInvocationPrepareOptions<PickNodesInput>,
-  ): vscode.PreparedToolInvocation {
-    const parsed = parsePickInput(options.input);
-    const question = typeof parsed === "string" ? "" : `: ${parsed.prompt}`;
-    return { invocationMessage: `Waiting for you to pick in the diagram${question}` };
-  }
-
-  async invoke(
-    options: vscode.LanguageModelToolInvocationOptions<PickNodesInput>,
-    token: vscode.CancellationToken,
-  ): Promise<vscode.LanguageModelToolResult> {
-    const parsed = parsePickInput(options.input);
-    if (typeof parsed === "string") {
-      return textResult(`No node was picked: ${parsed}`);
-    }
-    const outcome = await this.panel.pickNodes(parsed.prompt, parsed.multiple, token);
-    return textResult(
-      outcome.picked
-        ? `The user picked: ${nodeList(outcome.nodes)}.`
-        : `No node was picked: ${outcome.reason}`,
-    );
-  }
-}
-
 export class AnnotateDiagramTool implements vscode.LanguageModelTool<AnnotateInput> {
   constructor(private readonly panel: DiagramPanel) {}
 
@@ -584,10 +344,6 @@ export class AnnotateDiagramTool implements vscode.LanguageModelTool<AnnotateInp
     throwIfCancelled(token);
     let annotation: Annotation;
     try {
-      checkedRevision(
-        isPlainObject(options.input) ? options.input.revision : undefined,
-        this.panel.revision,
-      );
       annotation = validateAnnotation(options.input);
     } catch (error) {
       return textResult(
@@ -600,9 +356,7 @@ export class AnnotateDiagramTool implements vscode.LanguageModelTool<AnnotateInp
     await unlessCancelled(() => this.panel.itemIds(), token);
     throwIfCancelled(token);
     if (revision !== this.panel.revision) {
-      return textResult(
-        `Nothing was marked: the diagram changed while it was drawn. Read ${GET_STATE_TOOL} and retry for the current diagram.`,
-      );
+      return textResult("Nothing was marked: the diagram changed while it was drawn. Try again.");
     }
     const outcome = this.panel.annotate(annotation);
     if (!outcome.ok) {
@@ -610,14 +364,9 @@ export class AnnotateDiagramTool implements vscode.LanguageModelTool<AnnotateInp
     }
     const language = this.panel.current?.language ?? "mermaid";
     const noun = diagramNoun(language);
-    const { marks, dim } = annotationFrame(outcome.annotation);
+    const { marks, dim } = outcome.annotation;
     const { names, given, several } = outcome;
     const sentences: string[] = [];
-    if (outcome.annotation.steps) {
-      sentences.push(
-        `Started a walkthrough with ${outcome.annotation.steps.length} steps. The user can advance with Next and Previous; diagram_getState reports the active step.`,
-      );
-    }
     if (marks.length > 0) {
       const includesRelationships =
         language === "mermaid" &&
@@ -635,8 +384,6 @@ export class AnnotateDiagramTool implements vscode.LanguageModelTool<AnnotateInp
       if (names === undefined) {
         sentences.push("Item ids could not be verified; unknown items will not show marks.");
       }
-    } else if (outcome.annotation.steps) {
-      // A first step that marks nothing introduces the walkthrough; later steps mark items.
     } else if (
       outcome.unknown.length > 0 ||
       outcome.repeated.length > 0 ||
@@ -649,7 +396,7 @@ export class AnnotateDiagramTool implements vscode.LanguageModelTool<AnnotateInp
     const unknown =
       outcome.unknown.length > 0 && names
         ? `\n\nThese ids are not selectable items of the ${noun}, so nothing was marked for them: ` +
-          `${resolvedList(outcome.unknown)}. Its items are ${idList(names.names())}. Use ${GET_STATE_TOOL} with detail:"items" and query to find exact ids.`
+          `${resolvedList(outcome.unknown)}. Its items are ${idList(names.names())}.`
         : "";
     const ambiguous = [repeatedList(outcome.repeated), names ? severalList(several, names) : ""]
       .filter(Boolean)
@@ -665,8 +412,6 @@ export class AnnotateDiagramTool implements vscode.LanguageModelTool<AnnotateInp
 /** How marking reads in chat, e.g. `Marking "pay" in the diagram`. */
 function markingMessage(annotation: Annotation, language: DiagramLanguage): string {
   const noun = diagramNoun(language);
-  if (annotation.steps)
-    return `Starting a ${annotation.steps.length}-step walkthrough of the ${noun}`;
   const { marks } = annotation;
   if (marks.length === 0) {
     return `Clearing the marks in the ${noun}`;

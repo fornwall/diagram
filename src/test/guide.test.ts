@@ -33,51 +33,10 @@ suite("diagram_guide", () => {
     assert.strictEqual(new Set(keys).size, keys.length);
   });
 
-  test("exposes a concise workflow separately from the drawing examples", async () => {
-    const text = await invokeTool(new DiagramGuideTool(), { topic: "workflow" });
-    assert.match(guideIndex(), /^- workflow: .+$/m);
-    assert.match(text, /^workflow: /);
-    assert.ok(text.length <= MAX_TOPIC_LENGTH, `workflow: ${text.length} characters`);
-    assert.strictEqual(findTopic("workflow"), undefined);
-    for (const topic of ["tools", "getting-started", "Agent workflow", "WORKFLOW"]) {
-      assert.strictEqual(await invokeTool(new DiagramGuideTool(), { topic }), text, topic);
-      assert.strictEqual(findTopic(topic), undefined, topic);
-    }
-    assert.match(text, /oldText copied exactly from current source/);
-    assert.match(text, /revision conflict, reread and adapt; keep the revision guard/);
-    assert.match(text, /datasetId.*snapshot without I\/O/);
-    assert.match(text, /Explicit sources read anew and commands rerun/);
-    assert.match(text, /detail:"items".*exact ids and labels/);
-    assert.match(text, /await each result and reuse its revision/);
-    assert.match(text, /Images omit selection and marks/);
-    assert.match(text, /only to paths and lines you read/);
-    assert.match(text, /diagram_exportHtml.*file:"report.html"/);
-    assert.match(text, /opening needs internet for the CDN renderer/);
-  });
-
   test("has a topic for every type of diagram that Mermaid draws", () => {
     for (const type of DIAGRAM_TYPES.filter((type) => type !== "info")) {
       assert.strictEqual(findTopic(type)?.language, "mermaid", type);
     }
-  });
-
-  test("explains agent capabilities without a rendering example", async () => {
-    const text = await invokeTool(new DiagramGuideTool(), { topic: "agent-tools" });
-    assert.ok(text.length <= MAX_TOPIC_LENGTH, `${text.length} characters`);
-    for (const name of [
-      "queryGraph",
-      "editStructure",
-      "checkpoint",
-      "draft",
-      "evidence",
-      "inspectData",
-      "annotate",
-    ]) {
-      assert.ok(text.includes(`diagram_${name}`), name);
-    }
-    assert.match(text, /sinceRevision/);
-    assert.match(text, /not semantic equivalence/);
-    assert.match(guideIndex(), /^- agent-tools: /m);
   });
 
   test("finds topics by the words a model may use", () => {
@@ -102,30 +61,14 @@ suite("diagram_guide", () => {
       /^There is no topic "a flowchart with subgraphs"; the closest is "flowchart"\./,
     );
     assert.match(guideText({ topic: "echarts-bars" }), /the closest is "echarts-bar"\./);
-    assert.match(guideText({ topic: "workflw" }), /the closest is "workflow"\./);
-    assert.match(guideText({ topic: "agent-toosl" }), /the closest is "agent-tools"\./);
-    assert.match(
-      guideText({ topic: "agent-tools for diagrams" }),
-      /the closest is "agent-tools"\./,
-    );
   });
 
-  test("answers a malformed input with the index and what to fix", () => {
+  test("answers a malformed input with the index", () => {
     assert.strictEqual(guideText({ topic: "  " }), guideIndex());
     assert.strictEqual(guideText({ topic: null }), guideIndex());
     assert.strictEqual(guideText(undefined), guideIndex());
-    assert.strictEqual(
-      guideText({ topic: "x".repeat(1001) }),
-      `"topic" must be at most 1,000 characters.\n\n${guideIndex()}`,
-    );
-    assert.strictEqual(
-      guideText({ topic: 3 }),
-      `"topic" must be a string, such as "flowchart".\n\n${guideIndex()}`,
-    );
-    assert.strictEqual(
-      guideText({ name: "gantt" }),
-      `Unknown property "name"; the properties are "topic".\n\n${guideIndex()}`,
-    );
+    assert.strictEqual(guideText({ topic: 3 }), guideIndex());
+    assert.strictEqual(guideText({ name: "gantt" }), guideIndex());
   });
 
   test("names the topic it reads in chat", () => {
@@ -133,12 +76,8 @@ suite("diagram_guide", () => {
     const message = (input: unknown) =>
       tool.prepareInvocation({ input: input as never }).invocationMessage;
     assert.strictEqual(message({ topic: "erDiagram" }), "Reading the guide to er");
-    assert.strictEqual(
-      message({ topic: "getting started" }),
-      "Reading the guide to the diagram workflow",
-    );
-    assert.strictEqual(message({}), "Reading the guide to diagram types");
-    assert.strictEqual(message({ topic: 3 }), "Reading the guide to diagram types");
+    assert.strictEqual(message({}), "Reading the diagram guide");
+    assert.strictEqual(message({ topic: 3 }), "Reading the diagram guide");
   });
 });
 

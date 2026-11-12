@@ -1,16 +1,8 @@
 import * as assert from "node:assert";
 import * as vscode from "vscode";
-import { ChartTool } from "../chartTools";
 import type { DiagramPanel, DiagramState, Drawn } from "../panel";
 import type { FromWebview, ImageView } from "../protocol";
-import {
-  AnnotateDiagramTool,
-  GetDiagramImageTool,
-  GetDiagramStateTool,
-  PickDiagramNodesTool,
-  RenderDiagramTool,
-} from "../tools";
-import { formatOption } from "../webview/optionSource";
+import { AnnotateDiagramTool, GetDiagramImageTool, RenderDiagramTool } from "../tools";
 import { afterTest, cancellationSource, replace } from "./afterTest";
 import { FakeWebview, newFakePanel, newPanel, openWebviewPanelAlone, within } from "./newPanel";
 import { invokeTool, toolText } from "./toolText";
@@ -32,380 +24,6 @@ suite("tools", () => {
   });
   teardown(() => panel.dispose());
 
-  test("stale annotation and crop requests do not act on replacement items", async () => {
-    const own = await newFakePanel();
-    await own.panel.render(
-      { language: "mermaid", title: "Flow", source: "flowchart LR\n A --> B" },
-      "tool",
-    );
-    const revision = own.panel.revision;
-    await own.panel.render(
-      { language: "mermaid", title: "Replacement", source: "flowchart LR\n A --> C" },
-      "tool",
-    );
-    const sent = own.webview.sent.length;
-    assert.match(
-      await invokeTool(new AnnotateDiagramTool(own.panel), { marks: [{ id: "A" }], revision }),
-      /changed since revision/,
-    );
-    assert.match(
-      await invokeTool(new GetDiagramImageTool(own.panel), { ids: ["A"], revision }),
-      /changed since revision/,
-    );
-    assert.strictEqual(own.webview.sent.length, sent);
-  });
-
-  test("diagram_getState leaves out a source that does not fit, instead of having it cut", async () => {
-    const source = `flowchart TD\n${"  A --> B\n".repeat(4_000)}`;
-    values.set("diagram.state", { ...flowchart, source });
-    panel.dispose();
-    panel = newPanel(values);
-    let counted = 0;
-    const state = (tokenBudget: number) =>
-      invokeTool(new GetDiagramStateTool(panel), {}, undefined, {
-        tokenBudget,
-        countTokens: async (text) => {
-          counted++;
-          return text.length / 4;
-        },
-      });
-    assert.ok((await state(20_000)).includes(source));
-    // Whether the source fits is plain from its length alone, without counting its tokens.
-    assert.ok((await state(200_000)).includes(source));
-    assert.strictEqual(counted, 1);
-    assert.doesNotMatch(await state(1_000), /A --> B/);
-    assert.strictEqual(counted, 2);
-    const summary = await state(10_000);
-    assert.doesNotMatch(summary, /A --> B/);
-    assert.match(
-      summary,
-      /\(The source, 40,013 characters long, is left out, as the room left in your input is too small for it\. diagram_getState with \{"detail": "source", "startLine": 1, "endLine": 200\} reads exact source lines/,
-    );
-    assert.match(summary, /"Flow"[\s\S]*The user edited this source/);
-  });
-
-  test("diagram_getState reads exact source ranges with indentation and original line endings", async () => {
-    const source = "flowchart TD\r\n  A --> B\r  B --> C\n  C --> D";
-    values.set("diagram.state", { ...flowchart, source });
-    panel.dispose();
-    panel = newPanel(values);
-    const text = await invokeTool(new GetDiagramStateTool(panel), { startLine: 2, endLine: 3 });
-    assert.match(text, /^Revision: 0\. mermaid source: 4 lines/);
-    assert.match(text, /Source lines 2-3/);
-    assert.ok(text.includes("```mermaid\n  A --> B\r  B --> C\n\n```"), text);
-    assert.doesNotMatch(text, /flowchart TD|C --> D/);
-    assert.match(text, /"startLine": 4/);
-    assert.match(text, /if it changes, reread the relevant lines/);
-    assert.match(
-      await invokeTool(new GetDiagramStateTool(panel), { startLine: 4 }),
-      /Source lines 4-4[\s\S]*End of source\./,
-    );
-  });
-
-  test("diagram_getState bounds source pages, with defaults and an end-of-source diagnostic", async () => {
-    const source = Array.from({ length: 700 }, (_, index) => `  n${index}`).join("\n");
-    values.set("diagram.state", { ...flowchart, source });
-    panel.dispose();
-    panel = newPanel(values);
-    const tool = new GetDiagramStateTool(panel);
-    const first = await invokeTool(tool, { detail: "source" });
-    assert.match(first, /Source lines 1-200/);
-    assert.match(first, /"startLine": 201/);
-    assert.doesNotMatch(first, /n200\b/);
-    const capped = await invokeTool(tool, { startLine: 10, endLine: 700 });
-    assert.match(capped, /Source lines 10-509/);
-    assert.doesNotMatch(capped, /n509\b/);
-    assert.match(await invokeTool(tool, { startLine: 701 }), /Line 701 is past the end/);
-  });
-
-  test("diagram_getState fits source pages to the token budget without truncating lines", async () => {
-    const lines = Array.from(
-      { length: 400 },
-      (_, index) => `  n${index}[${"Long label ".repeat(5)}]`,
-    );
-    const source = lines.join("\n");
-    values.set("diagram.state", { ...flowchart, source });
-    panel.dispose();
-    panel = newPanel(values);
-    const budget = { tokenBudget: 400, countTokens: async (text: string) => text.length / 4 };
-    const result = await invokeTool(
-      new GetDiagramStateTool(panel),
-      { detail: "source" },
-      undefined,
-      budget,
-    );
-    assert.ok(result.length <= budget.tokenBudget * 4, result);
-    const end = Number(/Source lines 1-(\d+)/.exec(result)?.[1]);
-    assert.ok(end > 0 && end < 200, result);
-    assert.ok(result.includes(`${lines[end - 1]}\n\n\x60\x60\x60`), result);
-    assert.match(result, new RegExp(`"startLine": ${end + 1}`));
-    const next = await invokeTool(new GetDiagramStateTool(panel), {
-      startLine: end + 1,
-      endLine: end + 1,
-    });
-    assert.ok(next.includes(lines[end] ?? assert.fail("missing next line")));
-  });
-
-  test("diagram_getState can shrink to the same one-line page as an explicit range", async () => {
-    values.set("diagram.state", { ...flowchart, source: "  A --> B\n".repeat(300).trimEnd() });
-    panel.dispose();
-    panel = newPanel(values);
-    const tool = new GetDiagramStateTool(panel);
-    const oneLine = await invokeTool(tool, { endLine: 1 });
-    const result = await invokeTool(tool, { detail: "source" }, undefined, {
-      tokenBudget: oneLine.length,
-      countTokens: async (text) => text.length,
-    });
-    assert.strictEqual(result, oneLine);
-  });
-
-  test("diagram_getState explains when a whole source line cannot fit", async () => {
-    values.set("diagram.state", {
-      ...flowchart,
-      source: `flowchart TD; ${"A --> B; ".repeat(1_000)}`,
-    });
-    panel.dispose();
-    panel = newPanel(values);
-    const result = await invokeTool(
-      new GetDiagramStateTool(panel),
-      { detail: "source" },
-      undefined,
-      {
-        tokenBudget: 400,
-        countTokens: async (text) => text.length / 4,
-      },
-    );
-    assert.match(
-      result,
-      /Source line 1 does not fit[\s\S]*larger tool result budget or a new chat/,
-    );
-    assert.doesNotMatch(result, /A --> B/);
-  });
-
-  test("diagram_getState summary keeps context but omits source and user-edit diffs", async () => {
-    values.set("diagram.state", {
-      ...flowchart,
-      error: "Parse error",
-      userEdit: { from: "flowchart TD\n  Before", to: flowchart.source },
-    });
-    panel.dispose();
-    panel = newPanel(values);
-    const result = await invokeTool(new GetDiagramStateTool(panel), { detail: "summary" });
-    assert.match(result, /Revision: 0\.[\s\S]*Current Mermaid diagram: "Flow"/);
-    assert.match(
-      result,
-      /omitted from this response[\s\S]*Parse error[\s\S]*The user edited this source/,
-    );
-    assert.doesNotMatch(result, /A\[Parser\]|Before|```diff/);
-  });
-
-  test("diagram_getState validates detail and source ranges instead of silently ignoring them", async () => {
-    const tool = new GetDiagramStateTool(panel);
-    for (const input of [
-      { detail: "unknown" },
-      { detail: ["source"] },
-      { startLine: 0 },
-      { startLine: "1" },
-      { endLine: 1.5 },
-      { startLine: 5, endLine: 3 },
-      { detail: "summary", startLine: 1 },
-      { detail: "full", endLine: 1 },
-      { start: 1 },
-    ]) {
-      assert.match(
-        await invokeTool(tool, input),
-        /^The diagram was not read:/,
-        JSON.stringify(input),
-      );
-    }
-  });
-
-  test("diagram_getState reports oversized metadata for full and summary reads without truncation", async () => {
-    values.set("diagram.state", { ...flowchart, title: "Large title ".repeat(500) });
-    panel.dispose();
-    panel = newPanel(values);
-    for (const input of [{}, { detail: "summary" }]) {
-      const result = await invokeTool(new GetDiagramStateTool(panel), input, undefined, {
-        tokenBudget: 400,
-        countTokens: async (text) => text.length / 4,
-      });
-      assert.match(result, /^Revision: 0\. The diagram's metadata does not fit/);
-      assert.match(result, /larger tool result budget or a new chat/);
-      assert.match(result, /diagram_getState with "startLine" and "endLine"/);
-      assert.doesNotMatch(result, /Large title|A\[Parser\]/);
-      assert.ok(result.length <= 400 * 4);
-    }
-  });
-
-  test("diagram_getState bounds fallback metadata without a caller token budget", async () => {
-    values.set("diagram.state", { ...flowchart, title: "Large title ".repeat(10_000) });
-    panel.dispose();
-    panel = newPanel(values);
-    const result = await invokeTool(new GetDiagramStateTool(panel), {});
-    assert.match(result, /^Revision: 0\. The diagram's metadata does not fit/);
-    assert.doesNotMatch(result, /Large title/);
-    assert.match(result, /diagram_getState with "startLine" and "endLine"/);
-  });
-
-  test("diagram_getState falls back to metadata when even an elided option exceeds the budget", async () => {
-    const { panel: shown } = await newFakePanel();
-    const source = formatOption(
-      JSON.stringify({
-        title: { text: "Large caption ".repeat(400) },
-        series: [{ type: "line", data: Array(2_000).fill(1) }],
-      }),
-    );
-    await shown.render({ language: "echarts", source, title: "Original" }, "tool");
-    const revision = shown.revision;
-    const budget = 1_000;
-    const summary = shown.describeForModel({ detail: "summary" }) ?? assert.fail("No summary");
-    assert.match(summary, /long runs of lines of values left out/);
-    assert.ok(summary.length / 4 > budget);
-    let changed = false;
-    const result = await invokeTool(new GetDiagramStateTool(shown), {}, undefined, {
-      tokenBudget: budget,
-      countTokens: async (text) => {
-        if (!changed) {
-          changed = true;
-          await shown.render(
-            { language: "mermaid", source: "flowchart TD\n  Replacement", title: "New" },
-            "tool",
-          );
-        }
-        return text.length / 4;
-      },
-    });
-    assert.ok(changed, "Token counting must yield while considering an earlier candidate");
-    assert.match(result, new RegExp(`^Revision: ${revision}\\.`));
-    assert.match(result, /Current ECharts chart: "Original"/);
-    assert.match(result, /omitted from this response/);
-    assert.match(result, /"startLine": 1, "endLine": 200/);
-    assert.doesNotMatch(result, /Large caption|Replacement|"New"/);
-    assert.ok(result.length / 4 <= budget, result);
-    assert.notStrictEqual(shown.revision, revision);
-  });
-
-  test("diagram_getState keeps one snapshot while asynchronous token counting yields", async () => {
-    const { panel: shown } = await newFakePanel();
-    const source = `flowchart TD\n${"  Original --> Kept\n".repeat(1_500)}`;
-    await shown.render({ language: "mermaid", source, title: "Original" }, "tool");
-    const revision = shown.revision;
-    let changed = false;
-    const result = await invokeTool(new GetDiagramStateTool(shown), {}, undefined, {
-      tokenBudget: 4_000,
-      countTokens: async (text) => {
-        if (!changed) {
-          changed = true;
-          await shown.render(
-            { language: "mermaid", source: "flowchart TD\n  Replacement", title: "New" },
-            "tool",
-          );
-        }
-        return text.length / 4;
-      },
-    });
-    assert.ok(changed);
-    assert.match(result, new RegExp(`^Revision: ${revision}\\.`));
-    assert.match(result, /Current Mermaid diagram: "Original"/);
-    assert.doesNotMatch(result, /Replacement|"New"/);
-    assert.notStrictEqual(shown.revision, revision);
-  });
-
-  test("diagram_getState gives a caller without a token budget a large chart without its data", async () => {
-    const data = Array.from({ length: 20_000 }, (_, i) => i);
-    const source = formatOption(JSON.stringify({ series: [{ type: "line", data }] }));
-    values.set("diagram.state", { ...flowchart, language: "echarts", source, title: "Line" });
-    panel.dispose();
-    panel = newPanel(values);
-    const state = await invokeTool(new GetDiagramStateTool(panel), {});
-    assert.ok(source.length > 100_000);
-    assert.match(state, /too long for the room left in your input\. Here it is with long runs/);
-    assert.ok(state.length < 2_000, state);
-    // With a budget that it fits, it is given in full.
-    const budget = { tokenBudget: 100_000, countTokens: async (text: string) => text.length / 4 };
-    assert.ok(
-      (await invokeTool(new GetDiagramStateTool(panel), {}, undefined, budget)).includes(source),
-    );
-  });
-
-  test("diagram_getState cancels while waiting for a token counter that does not respond", async () => {
-    const cancellation = cancellationSource();
-    const reading = invokeTool(new GetDiagramStateTool(panel), {}, cancellation.token, {
-      tokenBudget: 200,
-      countTokens: () => {
-        cancellation.cancel();
-        return new Promise<number>(() => {});
-      },
-    });
-    await assert.rejects(reading, vscode.CancellationError);
-  });
-
-  test("diagram_getState gives the source of a diagram before a long list of its relationships", async () => {
-    const { panel: shown, webview } = await newFakePanel();
-    // Two edges between each pair of nodes, which only their ids tell apart.
-    const count = 1_600;
-    const pair = (i: number) => [`n${Math.floor(i / 2)}`, `n${Math.floor(i / 2) + 1}`] as const;
-    const edges = Array.from(
-      { length: count },
-      (_, i) => `  ${pair(i)[0]}[Service] --> ${pair(i)[1]}`,
-    );
-    const source = `flowchart TD\n${edges.join("\n")}`;
-    const relationships = Array.from({ length: count }, (_, i) => ({
-      id: `edge:L_${pair(i).join("_")}_${i % 2}`,
-      label: "Service → Service",
-      relationship: {
-        kind: "edge",
-        source: pair(i)[0],
-        target: pair(i)[1],
-        direction: "forward",
-      } as const,
-    }));
-    webview.answer = (message): FromWebview | undefined =>
-      message.type === "render"
-        ? {
-            type: "rendered",
-            requestId: message.requestId,
-            diagramType: "flowchart-v2",
-            nodeIds: Array.from({ length: count / 2 + 1 }, (_, i) => `n${i}`),
-            relationships,
-          }
-        : undefined;
-    assert.ok((await shown.render({ language: "mermaid", source, title: "Services" }, "tool")).ok);
-    const full = shown.describeForModel({ detail: "full" }) ?? "";
-    assert.ok(full.length > 100_000, String(full.length));
-    // Without a budget, and with one that the source fits but not the list.
-    const budget = { tokenBudget: 20_000, countTokens: async (text: string) => text.length / 4 };
-    for (const room of [undefined, budget]) {
-      const state = await invokeTool(new GetDiagramStateTool(shown), {}, undefined, room);
-      assert.ok(state.includes(source), state.slice(0, 500));
-      assert.match(
-        state,
-        /It has 1,600 edges, which their ends and labels do not tell apart, too many to list their ids in the room left/,
-      );
-    }
-  });
-
-  test("diagram_render says it renders a chart for a source that starts with a brace", () => {
-    const tool = new RenderDiagramTool(panel);
-    const message = (input: { source: string; language?: string }) =>
-      tool.prepareInvocation({ input }).invocationMessage;
-    assert.strictEqual(
-      message({ source: ' {"title": {"text": "Sales"}, "series": []}' }),
-      'Rendering chart "Sales"',
-    );
-    assert.match(String(message({ source: "flowchart LR\n  A --> B" })), /^Rendering diagram/);
-    assert.match(
-      String(message({ source: '{"series": []}', language: "mermaid" })),
-      /^Rendering diagram/,
-    );
-    // As a model may write the language.
-    assert.match(
-      String(message({ source: "flowchart LR", language: "Mermaid" })),
-      /^Rendering diagram/,
-    );
-    assert.match(String(message({ source: "{}", language: "ECharts" })), /^Rendering chart/);
-  });
-
   test("diagram_render keeps user edits made while checking code links", async () => {
     const { panel: shown, webview } = await newFakePanel();
     await shown.render(
@@ -426,7 +44,7 @@ suite("tools", () => {
       links: { Replacement: "sizes.tsv" },
     });
     assert.strictEqual(shown.current?.source, edited);
-    assert.match(result, /Nothing was rendered because the diagram changed in the panel/);
+    assert.match(result, /Nothing was rendered, as the user changed the diagram meanwhile/);
   });
 
   test("diagram_render takes a source in a Markdown fence, with a longer closing marker", async () => {
@@ -455,12 +73,7 @@ suite("tools", () => {
     const tool = new RenderDiagramTool(panel);
     const option = { title: { text: "Sales" }, series: [] };
     for (const language of [undefined, "echarts", "ECharts"]) {
-      const input = { source: option, language };
-      assert.strictEqual(
-        tool.prepareInvocation({ input } as never).invocationMessage,
-        'Rendering chart "Sales"',
-      );
-      await invokeTool(tool, input);
+      await invokeTool(tool, { source: option, language });
     }
     assert.match(
       await invokeTool(tool, { source: option, language: "mermaid" }),
@@ -491,19 +104,18 @@ suite("tools", () => {
     const leftOut =
       '\n\nThese links were left out:\n- "B": "b.ts:2" gives its line after a colon; write it as "#L42" or "#L42-L80".\n- "C": made-up.ts does not exist.\n';
     const drawn = await render();
-    assert.match(drawn, /^Rendered the flowchart diagram in the diagram panel next to the chat\./);
+    assert.match(drawn, /^Rendered the flowchart diagram in the diagram panel\./);
     assert.ok(drawn.includes(leftOut), drawn);
-    assert.match(drawn, /\. Correct them with "links" in diagram_edit\.\n\nRevision: 1\.$/);
     assert.deepStrictEqual(linked, [{ A: { file: "sizes.tsv", line: 1 } }]);
     const invalid = await render();
     assert.match(
       invalid,
-      /^The diagram failed to render with this error:\n\nParse error\n\nFix the Mermaid syntax/,
+      /^The diagram fails to render:\n\nParse error\n\nThe panel shows the error\./,
     );
     assert.ok(invalid.includes(leftOut), invalid);
     assert.match(
       await render(),
-      /^The diagram could not be shown: The diagram panel is unavailable\. This is not a problem with the diagram, and the panel may still be drawing it: diagram_getState says whether it is shown\. Call diagram_render again only to reopen a closed panel/,
+      /^The panel could not show the diagram: The diagram panel is unavailable\. The panel may still be drawing it\./,
     );
     // A chart takes no links, which no correction adds.
     outcomes.push({ ok: true, diagramType: "bar", revision: 2 });
@@ -513,65 +125,7 @@ suite("tools", () => {
     });
     assert.match(
       chart,
-      /\n\nThe links were left out\. Links are only for the nodes of a Mermaid diagram; a chart's items are data points rather than places in the code\.\n\nRevision: 2\.$/,
-    );
-  });
-
-  test("diagram_render draws despite a misnamed property, and names it", async () => {
-    const rendered: (string | undefined)[] = [];
-    panel.render = async (diagram) => {
-      rendered.push(diagram.clickPrompt);
-      return { ok: true, diagramType: "flowchart", revision: 1 };
-    };
-    const result = await invokeTool(new RenderDiagramTool(panel), {
-      source: "flowchart LR\n  A --> B",
-      clickprompt: "Explain {label}",
-      title: null,
-    });
-    assert.deepStrictEqual(rendered, [undefined]);
-    assert.match(
-      result,
-      /\n\nUnknown property "clickprompt"; the properties are "source", "revision", "newDiagram", "language", "title", "clickPrompt", "links"\. Unknown properties are ignored\.\n\nRevision: 1\.$/,
-    );
-  });
-
-  test("diagram_render draws despite a title or click prompt that is not a string, and says so", async () => {
-    panel.render = async () => ({ ok: true, diagramType: "flowchart", revision: 1 });
-    assert.match(
-      await invokeTool(new RenderDiagramTool(panel), {
-        source: "flowchart LR\n  A --> B",
-        title: 5,
-        clickPrompt: [],
-      }),
-      /\n\n"title" must be a string, so it was ignored\. "clickPrompt" must be a string, so it was ignored\.\n\nRevision: 1\.$/,
-    );
-  });
-
-  test("diagram_pickNodes reports the nodes the user picked", async () => {
-    const nodes = [
-      { id: "A", label: "Parser" },
-      {
-        id: "edge:L_A_B_0",
-        label: "Parser → Checker",
-        relationship: { kind: "edge", source: "A", target: "B", direction: "forward" },
-      },
-    ] as const;
-    panel.pickNodes = async () => ({ picked: true, nodes: [...nodes] });
-    assert.strictEqual(
-      await invokeTool(new PickDiagramNodesTool(panel), { prompt: "Which?" }),
-      'The user picked: "Parser" (id: "A"), "Parser → Checker" (id: "edge:L_A_B_0"; edge; from: "A"; to: "B"; direction: forward).',
-    );
-  });
-
-  test("diagram_pickNodes refuses a misnamed or mistyped setting instead of picking one item", async () => {
-    let picks = 0;
-    panel.pickNodes = async () => ({ picked: false, reason: `Pick ${++picks}` });
-    const pick = (input: object) => invokeTool(new PickDiagramNodesTool(panel), input);
-    assert.match(await pick({ prompt: "Which?", multi: true }), /Unknown property "multi"/);
-    assert.match(await pick({ prompt: "Which?", multiple: "true" }), /"multiple" must be true/);
-    assert.strictEqual(
-      await pick({ prompt: "Which?", multiple: null }),
-      "No node was picked: Pick 1",
+      /\n\nThe links were left out\. Links are only for the nodes of a Mermaid diagram; a chart's items are data points rather than places in the code\.$/,
     );
   });
 
@@ -695,7 +249,10 @@ suite("tools", () => {
       { language: "mermaid", source: "flowchart LR\n  A[Another node] --> C", title: "Other" },
       "tool",
     );
-    assert.match(await marking, /^Nothing was marked: the diagram changed.*diagram_getState/);
+    assert.match(
+      await marking,
+      /^Nothing was marked: the diagram changed while it was drawn\. Try again\.$/,
+    );
     assert.ok(!reopened.sent.some((message) => message.type === "annotate"));
     await reopened.finishRender();
     assert.ok((await replacement).ok);
@@ -721,59 +278,7 @@ suite("tools", () => {
     await assert.rejects(marking, vscode.CancellationError);
     await reopened.finishRender();
     assert.ok(!reopened.sent.some((message) => message.type === "annotate"));
-    assert.doesNotMatch(panel.describeForModel() ?? "", /Marked nodes/);
-  });
-
-  test("tools report malformed input without throwing during preparation", async () => {
-    for (const tool of [
-      new RenderDiagramTool(panel),
-      new ChartTool(panel),
-      new PickDiagramNodesTool(panel),
-      new AnnotateDiagramTool(panel),
-    ]) {
-      for (const input of [null, undefined, [], 42]) {
-        tool.prepareInvocation({ input } as never);
-        assert.match(
-          await invokeTool(tool, input),
-          /^(Nothing was rendered|No chart was rendered|No node was picked|Nothing was marked): /,
-        );
-      }
-    }
-    assert.deepStrictEqual(panel.current, flowchart);
-  });
-
-  test("cancelled tools leave the diagram, its marks and the closed panel alone", async () => {
-    const cancellation = cancellationSource();
-    cancellation.cancel();
-    const calls: string[] = [];
-    panel.render = async () => {
-      calls.push("render");
-      return { ok: true, diagramType: "test", revision: 1 };
-    };
-    panel.annotate = () => {
-      calls.push("annotate");
-      return { ok: false, reason: "Unexpected annotation" };
-    };
-    const create = vscode.window.createWebviewPanel;
-    replace(vscode.window, "createWebviewPanel", (...args) => {
-      calls.push("open");
-      return create(...args);
-    });
-    for (const [tool, input] of [
-      [new RenderDiagramTool(panel), { source: "flowchart LR\n  C --> D" }],
-      [new ChartTool(panel), { type: "bar", data: "A,1\nB,2" }],
-      [new AnnotateDiagramTool(panel), { marks: ["A"] }],
-      [new GetDiagramImageTool(panel), {}],
-      [new GetDiagramStateTool(panel), {}],
-    ] as const) {
-      await assert.rejects(
-        () => invokeTool(tool, input, cancellation.token),
-        vscode.CancellationError,
-      );
-    }
-    assert.deepStrictEqual(calls, []);
-    assert.deepStrictEqual(panel.current, flowchart);
-    assert.strictEqual(values.get("diagram.state"), flowchart);
+    assert.doesNotMatch(panel.describeForModel() ?? "", /Marked: /);
   });
 
   test("diagram_getImage draws within 1568 pixels a side and 1.15 million in all, and says what it shows", async function () {
@@ -810,12 +315,12 @@ suite("tools", () => {
     assert.strictEqual(steps30.size[0], 1568);
     assert.match(
       steps30.text,
-      /^Revision \d+ of the diagram: all of its \d{4}×\d+ px drawing, at \d\d% in this 1568×\d+ px image\. Its text, 16 px, is \d+(\.\d)? px here: too small to read reliably\. To read it, call diagram_getImage with the "ids" of a few items, to see the part around them\. The panel shows it at \d+% in \d+×\d+ px(?:, too small to read without zooming in)?, \d+% of its width at a time, scrolling sideways for the rest\.$/,
+      /^The diagram: all of its \d{4}×\d+ px drawing, at \d\d% in this 1568×\d+ px image\. Its text, 16 px, is \d+(\.\d)? px here: too small to read reliably\. To read it, call diagram_getImage with the "ids" of a few items, to see the part around them\. The panel shows it at \d+% in \d+×\d+ px(?:, too small to read without zooming in)?, \d+% of its width at a time, scrolling sideways for the rest\.$/,
     );
     const pie = '{"series": [{"type": "pie", "data": [{"name": "Pie", "value": 1}]}]}';
     assert.ok((await panel.render({ language: "echarts", source: pie, title: "Pie" }, "tool")).ok);
     const shown = await view();
-    const layout = /^Revision \d+ of the chart: all of it, laid out for the panel at (\d+×\d+ px),/;
+    const layout = /^The chart: all of it, laid out for the panel at (\d+×\d+ px),/;
     const [, size] = layout.exec(shown.text) ?? [];
     assert.ok(size, shown.text);
     // The page of a hidden tab has the size of an empty frame, too small to lay the chart out for.
@@ -825,10 +330,7 @@ suite("tools", () => {
     assert.ok(await within(() => !opened.visible));
     const hidden = await view();
     assert.deepStrictEqual(hidden.size, shown.size);
-    assert.match(
-      hidden.text,
-      new RegExp(`^Revision \\d+ of the chart: all of it, laid out at ${size},`),
-    );
+    assert.match(hidden.text, new RegExp(`^The chart: all of it, laid out at ${size},`));
     // The user closed the panel: viewing opens it again, beside chat, without taking the focus.
     const tabs = () => vscode.window.tabGroups.all.flatMap((group) => group.tabs);
     await vscode.commands.executeCommand("workbench.action.closeAllEditors");
@@ -883,11 +385,11 @@ suite("tools", () => {
         await view({ ids: "A" }, 'Nothing drawn has these ids: "A".'),
       ],
       [
-        "Revision 1 of the diagram: all of its 400×300 px drawing, at 100% in this 400×300 px image. The panel shows it at 100% in 800×600 px.",
-        'Revision 1 of the diagram: all of its 4000×500 px drawing, at 39% in this 1568×196 px image. Its text, 16 px, is 6.3 px here: too small to read reliably. To read it, call diagram_getImage with the "ids" of a few items, to see the part around them. The panel shows it at 20% in 800×600 px, too small to read without zooming in.',
-        'Revision 1 of the diagram: all of its 4000×500 px drawing, at 39% in this 1568×196 px image. Its text, 16 px, is 6.3 px here: too small to read reliably. To read it, call diagram_getImage with the "ids" of a few items, to see the part around them. The panel shows it at 56% in 800×600 px, 36% of its width at a time, scrolling sideways for the rest.',
-        'Revision 1 of the diagram: the part around "A", "B" (1500×300 px of the 4000×500 px drawing), at 40% in this 600×120 px image. Its text, 16 px, is 6.4 px here: too small to read reliably. To read it, give fewer "ids", of items close together. The panel shows it at 20% in 800×600 px, too small to read without zooming in.\n\nThese ids name nothing drawn, so the image leaves them out: "C".',
-        'Revision 1 of the diagram: the part around "A" (200×120 px of the 4000×500 px drawing), at 100% in this 200×120 px image. The panel shows it at 20% in 800×600 px, too small to read without zooming in.',
+        "The diagram: all of its 400×300 px drawing, at 100% in this 400×300 px image. The panel shows it at 100% in 800×600 px.",
+        'The diagram: all of its 4000×500 px drawing, at 39% in this 1568×196 px image. Its text, 16 px, is 6.3 px here: too small to read reliably. To read it, call diagram_getImage with the "ids" of a few items, to see the part around them. The panel shows it at 20% in 800×600 px, too small to read without zooming in.',
+        'The diagram: all of its 4000×500 px drawing, at 39% in this 1568×196 px image. Its text, 16 px, is 6.3 px here: too small to read reliably. To read it, call diagram_getImage with the "ids" of a few items, to see the part around them. The panel shows it at 56% in 800×600 px, 36% of its width at a time, scrolling sideways for the rest.',
+        'The diagram: the part around "A", "B" (1500×300 px of the 4000×500 px drawing), at 40% in this 600×120 px image. Its text, 16 px, is 6.4 px here: too small to read reliably. To read it, give fewer "ids", of items close together. The panel shows it at 20% in 800×600 px, too small to read without zooming in.\n\nThese ids name nothing drawn, so the image leaves them out: "C".',
+        'The diagram: the part around "A" (200×120 px of the 4000×500 px drawing), at 100% in this 200×120 px image. The panel shows it at 20% in 800×600 px, too small to read without zooming in.',
         'There is no image to view. Nothing drawn has these ids: "A".',
       ],
     );
@@ -900,8 +402,8 @@ suite("tools", () => {
         await view({}, chart),
       ],
       [
-        "Revision 2 of the chart: all of it, laid out for the panel at 800×1400 px, at 82% in this 656×1148 px image. The panel shows 800×600 px of it at a time, and scrolls the rest.",
-        "Revision 2 of the chart: all of it, laid out at 800×1400 px, at 82% in this 656×1148 px image.",
+        "The chart: all of it, laid out for the panel at 800×1400 px, at 82% in this 656×1148 px image. The panel shows 800×600 px of it at a time, and scrolls the rest.",
+        "The chart: all of it, laid out at 800×1400 px, at 82% in this 656×1148 px image.",
       ],
     );
     // The size of the image is that of the PNG, whose sides the page rounds down.
@@ -949,21 +451,14 @@ suite("tools", () => {
     assert.ok((await panel.render(flow, "tool")).ok);
     const tool = new GetDiagramImageTool(panel);
     const results = [];
-    for (const input of [
-      { ids: ["X", "a"] },
-      { ids: ["A --> C", "Q -> A", "B → A"] },
-      { ids: [1] },
-      { id: "A" },
-    ]) {
+    for (const input of [{ ids: ["X", "a"] }, { ids: ["A --> C", "Q -> A", "B → A"] }]) {
       results.push(await invokeTool(tool, input));
     }
     const items = '"A", "B", "C", "edge:L_A_B_0", "edge:L_A_B_1", "B --> C"';
     assert.deepStrictEqual(results, [
-      `There is no image to view: no item of the diagram has these ids: "X", "a". Its items are ${items}. Use diagram_getState with detail:"items" and query to find exact ids.`,
+      `There is no image to view: no item of the diagram has these ids: "X", "a". Its items are ${items}.`,
       'There is no image to view: no item of the diagram has these ids: "A --> C" (nothing goes from "A" to "C"), "Q -> A" ("Q" is not a node id), "B → A" (nothing goes from "B" to "A", only from "A" to "B"). ' +
-        `Its items are ${items}. Use diagram_getState with detail:"items" and query to find exact ids.`,
-      'There is no image to view: "ids" must be an array of item ids, such as ["A", "A --> B"].',
-      'There is no image to view: Unknown property "id"; the properties are "ids", "revision".',
+        `Its items are ${items}.`,
     ]);
     assert.deepStrictEqual(
       webview.sent.filter((message) => message.type === "export"),
@@ -972,7 +467,7 @@ suite("tools", () => {
     // Ends name all edges between them, either way for an edge both ways.
     assert.strictEqual(
       await invokeTool(tool, { ids: ["A --> B", "C -> B", "X"] }),
-      'Revision 1 of the diagram: the part around "A --> B", "C -> B" (200×100 px of the 400×300 px drawing), at 100% in this 200×100 px image.\n\n' +
+      'The diagram: the part around "A --> B", "C -> B" (200×100 px of the 400×300 px drawing), at 100% in this 200×100 px image.\n\n' +
         `These ids name nothing drawn, so the image leaves them out: "X". Its items are ${items}.`,
     );
     const exported = webview.sent.filter((message) => message.type === "export");
@@ -1035,8 +530,8 @@ suite("tools", () => {
           `${image.mimeType}: ${Buffer.from(image.data)}`,
       ]),
       [
-        ["Revision 1 of the chart:", "image/png: png 1"],
-        ["Revision 1 of the chart:", "image/png: png 0"],
+        ["The chart:", "image/png: png 1"],
+        ["The chart:", "image/png: png 0"],
       ],
     );
   });
@@ -1076,7 +571,7 @@ suite("tools", () => {
     };
     const viewing = invokeTool(new GetDiagramImageTool(panel), { ids: ["A --> B"] });
     await reopened.receive({ type: "ready" });
-    assert.match(await viewing, /^Revision 1 of the diagram:/);
+    assert.match(await viewing, /^The diagram:/);
     const exported = reopened.sent.find((message) => message.type === "export");
     assert.deepStrictEqual(exported?.ids, ["edge:L_A_B_0"]);
   });
@@ -1110,7 +605,7 @@ suite("tools", () => {
       reasons.push(await view(shown));
     }
     assert.deepStrictEqual(reasons, [
-      "There is no diagram to view. Render one with diagram_render or diagram_chart first.",
+      "There is no diagram to view. Render one with diagram_render first.",
       "There is no image to view. The diagram fails to render. Render a working diagram first. The error is: Oops",
       "There is no image to view. The panel is still drawing the diagram.",
       "There is no image to view. The diagram changed before it could be exported. Try again.",

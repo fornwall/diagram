@@ -199,15 +199,14 @@ suite("webview", function () {
     await draw({ source: MERMAID["flowchart-v2"] });
   });
 
-  test("leaves out idle instructions and path controls in every view", async () => {
+  test("leaves out idle instructions in every view", async () => {
     for (const source of ["flowchart LR\n A -->", MERMAID["flowchart-v2"], "flowchart TD"]) {
       await render({ source });
       assert.deepStrictEqual(
         await evaluate(`(() => {
           const states = ["visual", "source", "split"].map(view => {
             document.getElementById("view-" + view).click();
-            return document.getElementById("selection-label").textContent === "" &&
-              !document.getElementById("highlight-path");
+            return document.getElementById("selection-label").textContent === "";
           });
           document.getElementById("view-visual").click();
           return states;
@@ -221,10 +220,10 @@ suite("webview", function () {
     await draw({ source: MERMAID["flowchart-v2"] });
     assert.deepStrictEqual(
       await evaluate(`(() => {
-        const ids = ["zoom-out", "zoom-reset", "zoom-in", "drag-out"];
+        const ids = ["zoom-out", "zoom-reset", "zoom-in"];
         const state = () => ({
           shown: ids.filter(id => getComputedStyle(document.getElementById(id)).visibility === "visible"),
-          layout: [...document.querySelectorAll("header button, header .drag-out")].map(element => {
+          layout: [...document.querySelectorAll("header button")].map(element => {
             const box = element.getBoundingClientRect();
             return box.left + "," + box.top;
           }).join(" "),
@@ -235,7 +234,7 @@ suite("webview", function () {
         document.getElementById("view-visual").click();
         return {drawn: drawn.shown, source: source.shown, sameLayout: source.layout === drawn.layout};
       })()`),
-      { drawn: ["zoom-out", "zoom-reset", "zoom-in", "drag-out"], source: [], sameLayout: true },
+      { drawn: ["zoom-out", "zoom-reset", "zoom-in"], source: [], sameLayout: true },
     );
   });
 
@@ -261,40 +260,6 @@ suite("webview", function () {
       })()`),
       true,
     );
-  });
-
-  test("offers path highlighting only for two connected nodes, outside agent picks", async () => {
-    for (const source of [
-      "flowchart LR\n A --> B\n C[Isolated]",
-      "stateDiagram-v2\n A --> B\n B --> C",
-      "classDiagram\n A --> B\n class C",
-    ]) {
-      await draw({ source });
-      assert.deepStrictEqual(
-        await evaluate(`(async () => {
-          ${UNTIL}
-          const available = () => JSON.parse(document.body.dataset.vscodeContext)["diagram.canHighlightPath"];
-          const click = id => {
-            const node = document.querySelector('[data-diagram-id="' + id + '"][tabindex]');
-            if (!node) throw new Error("Missing node " + id + " in " + ${JSON.stringify(source)});
-            node.dispatchEvent(new MouseEvent("click", {bubbles: true, ctrlKey: true}));
-          };
-          const states = [available()];
-          click("A"); states.push(available());
-          click("B"); states.push(available());
-          click("C"); states.push(available());
-          click("C");
-          receive({type: "startPick", pickId: 90001, prompt: "Pick nodes", multiple: true});
-          await until(() => !document.getElementById("pick").hidden, "the pick");
-          click("A"); click("B"); states.push(available());
-          receive({type: "endPick", pickId: 90001});
-          await until(() => document.getElementById("pick").hidden, "the end of the pick");
-          return states;
-        })()`),
-        [false, false, !source.startsWith("classDiagram"), false, false],
-        source,
-      );
-    }
   });
 
   test("highlights hovered toolbar buttons as toolbars do, not as primary buttons", async () => {
@@ -441,7 +406,7 @@ suite("webview", function () {
             const box = element.getBoundingClientRect();
             return Math.round(box.top + box.height / 2);
           };
-          const rows = new Set([...header.querySelectorAll("h1, button, .drag-out")]
+          const rows = new Set([...header.querySelectorAll("h1, button")]
             .filter(element => element.getClientRects().length > 0).map(middle));
           const titleBesideZoom = middle(document.getElementById("title")) === middle(document.getElementById("zoom-out"));
           // Narrower still, the zoom buttons wrap together.
@@ -610,7 +575,7 @@ suite("webview", function () {
       );
       const described = page.panel.describeForModel() ?? "";
       assert.doesNotMatch(described, /Marked (nodes|items):/);
-      assert.match(described, /The user has no .* selected in the panel\./);
+      assert.match(described, /The user has no .* selected\./);
     }
   });
 
@@ -677,302 +642,6 @@ suite("webview", function () {
     );
     // The tests after this one draw charts without the focus on them.
     await evaluate("document.activeElement.blur()");
-  });
-
-  test("keeps the focus in the source view after highlighting a path from it", async () => {
-    await draw({ source: "flowchart LR\n A --> B" });
-    assert.strictEqual(
-      await evaluate(`(() => {
-        for (const id of ["A", "B"]) {
-          document.querySelector(\`[data-diagram-id="\${id}"][tabindex]\`)
-            .dispatchEvent(new MouseEvent("click", {bubbles: true, ctrlKey: true}));
-        }
-        document.getElementById("view-source").click();
-        receive({type: "highlightPath"});
-        try {
-          return document.activeElement.id;
-        } finally {
-          document.getElementById("view-visual").click();
-        }
-      })()`),
-      "source",
-    );
-  });
-
-  test("reveals node picks without losing source edits, describes the canvas by the prompt, and restores focus when finished", async () => {
-    await draw({ source: MERMAID["flowchart-v2"] });
-    assert.deepStrictEqual(
-      await evaluate(`(async () => {
-        ${UNTIL}
-        const results = [];
-        try {
-          const source = document.getElementById("source");
-          for (const view of ["visual", "source"]) for (const id of ["pick-done", "pick-cancel"]) {
-            document.getElementById("view-" + view).click();
-            const draft = source.value + "\\n%% Unapplied edit";
-            source.value = draft;
-            source.dispatchEvent(new Event("input"));
-            receive({type: "startPick", pickId: 90000, prompt: "Pick a node", multiple: true});
-            await until(() => !document.getElementById("pick").hidden, "the pick");
-            const canvas = document.getElementById("canvas");
-            const visible = canvas.getBoundingClientRect().height > 0;
-            const focused = document.activeElement === canvas &&
-              canvas.getAttribute("aria-describedby") === "pick-prompt";
-            const preserved = source.value === draft;
-            document.querySelector("#diagram .diagram-node[tabindex]")
-              .dispatchEvent(new MouseEvent("click", {bubbles: true}));
-            const button = document.getElementById(id);
-            button.focus();
-            button.click();
-            results.push(visible && focused && preserved && document.getElementById("pick").hidden &&
-              document.activeElement === canvas && !canvas.hasAttribute("aria-describedby") &&
-              canvas.tabIndex === 0 && canvas.getAttribute("aria-label") === "Diagram preview");
-          }
-          return results;
-        } finally {
-          document.getElementById("revert").click();
-          document.getElementById("view-visual").click();
-          document.getElementById("clear-selection").click();
-        }
-      })()`),
-      [true, true, true, true],
-    );
-  });
-
-  test("moves the focus from the canvas of a pick to the nodes with the first arrow key", async () => {
-    await draw({ source: chain("TD", 20), title: "Pick by keys" });
-    assert.deepStrictEqual(
-      await evaluate(`(async () => {
-        ${UNTIL}
-        const canvas = document.getElementById("canvas");
-        const banner = document.getElementById("pick");
-        const press = key => {
-          const event = new KeyboardEvent("keydown", {key, bubbles: true, cancelable: true});
-          document.activeElement.dispatchEvent(event);
-          return [document.activeElement.getAttribute("data-diagram-id") ?? document.activeElement.id,
-            event.defaultPrevented];
-        };
-        const inSight = () => {
-          const view = canvas.getBoundingClientRect();
-          const box = document.activeElement.getBoundingClientRect();
-          return box.bottom > view.top && box.top < view.bottom;
-        };
-        receive({type: "startPick", pickId: 90009, prompt: "Pick a node", multiple: false});
-        await until(() => !banner.hidden, "the pick");
-        const picking = {focused: document.activeElement.id,
-          described: canvas.getAttribute("aria-describedby").split(" ").includes("pick-prompt")};
-        const down = press("ArrowDown");
-        canvas.focus();
-        const end = press("End");
-        canvas.focus();
-        const home = press("Home");
-        // With the tab stop, n0, scrolled out of sight, the node in the middle of the canvas.
-        canvas.scrollTop = canvas.scrollHeight / 2;
-        canvas.focus();
-        const away = press("ArrowUp");
-        const shown = {picking, down, end, home, away: away[0] !== "n0" && away[1], inSight: inSight()};
-        receive({type: "endPick", pickId: 90009});
-        await until(() => banner.hidden, "the end of the pick");
-        // A modified key, such as for zooming or selecting, is not for the nodes.
-        canvas.focus();
-        shown.shifted = (() => {
-          const event = new KeyboardEvent("keydown", {key: "ArrowDown", shiftKey: true, bubbles: true, cancelable: true});
-          canvas.dispatchEvent(event);
-          return [document.activeElement.id, event.defaultPrevented];
-        })();
-        return shown;
-      })()`),
-      {
-        picking: { focused: "canvas", described: true },
-        down: ["n0", true],
-        end: ["n20", true],
-        home: ["n0", true],
-        away: true,
-        inSight: true,
-        shifted: ["canvas", false],
-      },
-    );
-  });
-
-  test("cancels a pick on Escape, unless a field or another control takes it", async () => {
-    await draw({ source: MERMAID["flowchart-v2"] });
-    assert.deepStrictEqual(
-      await evaluate(`(async () => {
-        ${UNTIL}
-        const banner = document.getElementById("pick");
-        receive({type: "startPick", pickId: 90003, prompt: "Pick", multiple: false});
-        await until(() => !banner.hidden, "the pick");
-        const select = document.body.appendChild(document.createElement("select"));
-        const escape = (target, taken) => {
-          const event = new KeyboardEvent("keydown", {key: "Escape", bubbles: true, cancelable: true});
-          if (taken) target.addEventListener("keydown", e => e.preventDefault(), {once: true});
-          target.dispatchEvent(event);
-          return banner.hidden;
-        };
-        try {
-          return [escape(select), escape(document.getElementById("ask-input")),
-            escape(document.getElementById("canvas"), true), escape(document.getElementById("canvas"))];
-        } finally {
-          select.remove();
-        }
-      })()`),
-      [false, false, false, true],
-    );
-  });
-
-  test("keeps a pick's buttons side by side in a narrow panel", async () => {
-    await draw({ source: MERMAID["flowchart-v2"] });
-    assert.deepStrictEqual(
-      await evaluate(`(async () => {
-        ${UNTIL}
-        const banner = document.getElementById("pick");
-        receive({type: "startPick", pickId: 90010, multiple: true,
-          prompt: "Pick the nodes where the request may fail, then press Done"});
-        await until(() => !banner.hidden, "the pick");
-        const box = (id) => document.getElementById(id).getBoundingClientRect();
-        const layout = (width) => {
-          banner.style.width = width;
-          const done = box("pick-done");
-          const cancel = box("pick-cancel");
-          return {sideBySide: done.top === cancel.top, besidePrompt: done.top < box("pick-prompt").bottom};
-        };
-        try {
-          return [layout("340px"), layout("200px")];
-        } finally {
-          banner.style.width = "";
-          receive({type: "endPick", pickId: 90010});
-          await until(() => banner.hidden, "the end of the pick");
-        }
-      })()`),
-      [
-        { sideBySide: true, besidePrompt: true },
-        { sideBySide: true, besidePrompt: false },
-      ],
-    );
-  });
-
-  test("starts and ends a pick sent with a diagram on the diagram drawn", async () => {
-    await draw({ source: MERMAID["flowchart-v2"] });
-    const option = { xAxis: { data: ["A"] }, yAxis: {}, series: [{ type: "bar", data: [1] }] };
-    assert.deepStrictEqual(
-      await evaluate(`(async () => {
-        ${UNTIL}
-        const banner = document.getElementById("pick");
-        const pick = (type, pickId) => receive({type, pickId, prompt: "Pick", multiple: false});
-        const render = (language, source) => receive({type: "render", requestId: 900004,
-          language, source, title: "Picked"});
-        render("echarts", ${JSON.stringify(JSON.stringify(option))});
-        pick("startPick", 90001);
-        await until(() => !banner.hidden, "the chart's pick");
-        const focused = [document.activeElement.id, document.activeElement.getAttribute("aria-describedby")];
-        render("mermaid", "flowchart LR\\n A --> B");
-        pick("endPick", 90001);
-        pick("startPick", 90002);
-        pick("endPick", 90002);
-        receive({type: "annotate", marks: [{id: "A", kind: "info"}], dim: false});
-        await until(() => document.querySelector('#diagram [data-diagram-id="A"].diagram-marked'),
-          "the marks after the pick");
-        return {focused, ended: banner.hidden};
-      })()`),
-      { focused: ["chart", "pick-prompt chart-drawing"], ended: true },
-    );
-  });
-
-  test("describes a drawing that replaces the picked one by the pick's question", async () => {
-    await draw({ source: MERMAID["flowchart-v2"] });
-    const option = { xAxis: { data: ["A"] }, yAxis: {}, series: [{ type: "bar", data: [1] }] };
-    assert.deepStrictEqual(
-      await evaluate(`(async () => {
-        ${UNTIL}
-        const banner = document.getElementById("pick");
-        let requestId = 900010;
-        const render = async (language, source) => {
-          window.testRenderResults = [];
-          receive({type: "render", requestId: ++requestId, language, source, title: "Replaced"});
-          await until(() => window.testRenderResults.length > 0, "the replacing drawing");
-          return [document.activeElement.id, document.activeElement.getAttribute("aria-describedby")];
-        };
-        receive({type: "startPick", pickId: 90004, prompt: "Pick", multiple: false});
-        await until(() => !banner.hidden, "the pick");
-        const focused = [await render("echarts", ${JSON.stringify(JSON.stringify(option))}),
-          await render("mermaid", "flowchart LR\\n A --> B")];
-        receive({type: "endPick", pickId: 90004});
-        await until(() => banner.hidden, "the end of the pick");
-        return {focused, left: document.querySelectorAll("[aria-describedby~=pick-prompt]").length};
-      })()`),
-      {
-        focused: [
-          ["chart", "pick-prompt chart-drawing"],
-          ["canvas", "pick-prompt"],
-        ],
-        left: 0,
-      },
-    );
-  });
-
-  test("zooms with Ctrl/Cmd and +, - and 0, and fits a new diagram but not a revision", async () => {
-    const zoom = () => evaluate(`document.getElementById("zoom-reset").textContent`);
-    /** Presses the key, with Cmd on macOS or Ctrl elsewhere, for whether VS Code saw it. */
-    const press = (key: string, modifier = true) =>
-      evaluate(`(() => {
-        const mac = navigator.userAgent.includes("Mac");
-        const event = new KeyboardEvent("keydown", {key: ${JSON.stringify(key)},
-          metaKey: ${modifier} && mac, ctrlKey: ${modifier} && !mac, bubbles: true, cancelable: true});
-        let forwarded = false;
-        const listener = () => { forwarded = true; };
-        window.addEventListener("keydown", listener);
-        document.getElementById("canvas").dispatchEvent(event);
-        window.removeEventListener("keydown", listener);
-        return {prevented: event.defaultPrevented, forwarded};
-      })()`);
-    const source = MERMAID["flowchart-v2"];
-    await draw({ source, title: "Zoom" });
-    assert.strictEqual(await zoom(), "100%");
-    assert.deepStrictEqual(
-      await evaluate(`["zoom-out", "zoom-reset", "zoom-in"].map(id => {
-        const button = document.getElementById(id);
-        const mac = navigator.userAgent.includes("Mac");
-        const [modifier, key] = button.getAttribute("aria-keyshortcuts").split("+");
-        return [key, modifier === (mac ? "Meta" : "Control"), button.title.endsWith("(Ctrl/Cmd+" + key + ")")];
-      })`),
-      [
-        ["-", true, true],
-        ["0", true, true],
-        ["=", true, true],
-      ],
-    );
-    assert.deepStrictEqual(await press("="), { prevented: true, forwarded: false });
-    assert.strictEqual(await zoom(), "125%");
-    // Named by what it shows and what it does.
-    assert.strictEqual(
-      await evaluate(`document.getElementById("zoom-reset").ariaLabel`),
-      "125%: Fit to the panel",
-    );
-    assert.deepStrictEqual(await press("-", false), { prevented: false, forwarded: true });
-    assert.strictEqual(await zoom(), "125%");
-    await press("-");
-    assert.strictEqual(await zoom(), "100%");
-    await press("+");
-    await press("0");
-    assert.strictEqual(await zoom(), "100%", "0 fits the diagram to the panel again.");
-    // Not in the source view, whose keys VS Code takes, to zoom the window.
-    await evaluate(`document.getElementById("view-source").click()`);
-    assert.deepStrictEqual(await press("="), { prevented: false, forwarded: true });
-    await evaluate(`document.getElementById("view-visual").click()`);
-    assert.strictEqual(await zoom(), "100%");
-
-    await press("+");
-    await draw({ source: `${source}\n  B --> C`, title: "Zoom" });
-    assert.strictEqual(await zoom(), "125%", "A revision keeps the zoom.");
-    await draw({ source, title: "Another" });
-    assert.strictEqual(await zoom(), "100%", "A diagram under another title fits the panel.");
-    await press("+");
-    await nextRender(() =>
-      page.panel.render({ language: "mermaid", source, title: "Another" }, "tool", undefined, {
-        newDiagram: true,
-      }),
-    );
-    assert.strictEqual(await zoom(), "100%", "A new diagram fits the panel.");
   });
 
   test("titles a diagram by a title written into its source, keeping its zoom", async () => {
@@ -2038,7 +1707,7 @@ suite("webview", function () {
     assert.deepStrictEqual(await evaluate("window.testInert"), []);
   });
 
-  test("hides the drag handle and other hidden controls whatever their styles", async () => {
+  test("hides hidden controls whatever their styles", async () => {
     assert.ok(!(await render({ source: "flowchart LR\n A -->" })).ok);
     assert.deepStrictEqual(
       await evaluate(`[...document.querySelectorAll("[hidden]")]
@@ -2046,7 +1715,6 @@ suite("webview", function () {
         .map(element => element.id)`),
       [],
     );
-    assert.strictEqual(await evaluate(`document.getElementById("drag-out").hidden`), true);
   });
 
   test("resolves relative URLs against the page, whatever <base> markup adds", async () => {
@@ -2091,10 +1759,7 @@ suite("webview chat", function () {
     assert.deepStrictEqual(chat.requests, [
       { query: 'Regarding "Parser" in the diagram: Explain this', isPartialQuery: false },
     ]);
-    assert.match(
-      await invokeTool(new GetDiagramStateTool(panel), {}),
-      /selected these nodes in the panel: "Parser"/,
-    );
+    assert.match(await invokeTool(new GetDiagramStateTool(panel), {}), /has selected: "Parser"/);
     assert.strictEqual(
       await evaluate('document.getElementById("selection-label").textContent'),
       "Selected: “Parser”",
@@ -2165,10 +1830,10 @@ suite("webview renderer loading", function () {
         ${UNTIL}
         const render = (requestId, language, source) => {
           receive({type: "render", requestId, language, source, title: "Shown",
-            clickPrompt: "Explain {label}", refreshFrom: "file pie.csv", writeTo: "notes.md"});
+            clickPrompt: "Explain {label}", writeTo: "notes.md"});
           return until(() => window.testRenderResults.includes(requestId), "render " + requestId);
         };
-        const shown = () => ["views", "refresh", "write-to", "editor"]
+        const shown = () => ["views", "write-to", "editor"]
           .filter(id => document.getElementById(id).checkVisibility())
           .concat(document.getElementById("canvas").classList.contains("click-to-ask") ? ["click-to-ask"] : []);
         document.getElementById("view-split").click();
@@ -2178,40 +1843,18 @@ suite("webview renderer loading", function () {
         await render(900011, "mermaid", "flowchart LR\\n A --> B");
         const failed = shown();
         document.getElementById("view-visual").click();
-        return {chart, apply, failed, applyAfter: document.getElementById("apply").title,
-          // Hidden, the Refresh button keeps its title rather than name a source of nothing.
-          refresh: document.getElementById("refresh").title};
+        return {chart, apply, failed, applyAfter: document.getElementById("apply").title};
       })()`),
       {
-        chart: ["views", "refresh", "write-to", "editor", "click-to-ask"],
+        chart: ["views", "write-to", "editor", "click-to-ask"],
         // Apply says that it writes to the document as well.
         apply: "Render your version and write it into the code block in notes.md (Ctrl/Cmd+Enter)",
         failed: [],
         applyAfter: "Render your version (Ctrl/Cmd+Enter)",
-        refresh: "Load the data again from file pie.csv",
       },
     );
     const again = await panel.render(flowchart, "tool");
     assert.ok(!again.ok && again.kind === "unavailable");
-  });
-
-  test("says when Chart Options do not load, and tries again the next time", async () => {
-    const { evaluate } = await pageWithout(/^chartOptions-\w+\.js$/);
-    assert.deepStrictEqual(
-      await evaluate(`(async () => {
-        ${UNTIL}
-        const label = document.getElementById("selection-label");
-        const shown = async () => {
-          label.textContent = "";
-          receive({type: "chartOptions", state: {revision: 0, controls: {type: "bar"}, columns: [],
-            rowCount: 0, edited: false}});
-          return until(() => /^Could not load Chart Options: /.test(label.textContent) && label.textContent,
-            "the error");
-        };
-        return [await shown(), await shown()].map(text => text.endsWith("(Developer: Reload Window)."));
-      })()`),
-      [true, true],
-    );
   });
 
   test("reports Mermaid not loading as its renderer not loading, not as an error to fix", async () => {
@@ -2314,14 +1957,14 @@ suite("JavaScript in chart options", function () {
 
   const render = async (source: string): Promise<RenderOutcome> =>
     withoutRevision(await panel.render({ language: "echarts", source, title: "Test" }, "tool"));
-  // Code in the option clicks Refresh, which sends the extension a message as if the user had.
+  // Code in the option has the page export, which sends the extension a message.
   const forging =
-    '{series: [{type: "pie", data: [1]}], title: {text: (document.getElementById("refresh").click(), "Forged")}}';
+    '{series: [{type: "pie", data: [1]}], title: {text: (dispatchEvent(new MessageEvent("message", {data: {type: "export", requestId: 1, renderRequestId: -1, format: "svg", forModel: false}})), "Forged")}}';
 
   test("runs in a trusted workspace, with all the power of the page", async () => {
     assert.match(webview.html, /script-src 'nonce-[\w-]+' 'unsafe-eval'/);
     assert.deepStrictEqual(await render(forging), { ok: true, diagramType: "pie" });
-    assert.ok(messages.includes("refresh"));
+    assert.ok(await within(() => messages.includes("exportError")));
   });
 
   test("does not run in an untrusted workspace, whose page may not evaluate code", async () => {
@@ -2342,7 +1985,7 @@ suite("JavaScript in chart options", function () {
       outcome.error,
       /^The ECharts option has JavaScript code \(line 1, column 52\), which the panel runs only in a trusted workspace\./,
     );
-    assert.ok(!messages.includes("refresh"), "the code in the option ran");
+    assert.ok(!messages.includes("exportError"), "the code in the option ran");
     // Object literals need no evaluation.
     assert.deepStrictEqual(await render("{series: [{type: 'pie', data: [1,],}],}"), {
       ok: true,

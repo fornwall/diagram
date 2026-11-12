@@ -1,6 +1,5 @@
 import * as assert from "node:assert";
 import * as vscode from "vscode";
-import type { ItemPage } from "../protocol";
 import { diagramExtension, recordMessages } from "./afterTest";
 import { toolText } from "./toolText";
 
@@ -37,14 +36,9 @@ suite("extension", function () {
     );
     const source = new TextDecoder().decode(await vscode.workspace.fs.readFile(uri));
     assert.match(source, /^---\n\s*name: Diagram\n/);
-    const tools = /^tools: (\[.*\])$/m.exec(source)?.[1];
-    assert.ok(tools, "The agent must declare its tools");
-    const declared = languageModelTools as { name: string; toolReferenceName: string }[];
-    assert.deepStrictEqual(
-      JSON.parse(tools).sort(),
-      declared.map(({ toolReferenceName }) => toolReferenceName).sort(),
-    );
-    for (const { name } of declared) {
+    // Without a list of tools, the agent has all of them.
+    assert.doesNotMatch(source, /^tools:/m);
+    for (const { name } of languageModelTools as { name: string }[]) {
       assert.ok(
         vscode.lm.tools.some((tool) => tool.name === name),
         name,
@@ -83,7 +77,6 @@ suite("extension", function () {
       for (const description of [modelDescription, userDescription]) {
         assert.match(description, /^\S.*\S$/, name);
       }
-      assert.ok(modelDescription.startsWith(`${name}: `), name);
       assert.strictEqual(inputSchema.type, "object", name);
       assert.ok(inputSchema.properties, name);
       checkSchema(inputSchema, name);
@@ -115,10 +108,7 @@ suite("extension", function () {
     assert.ok(options && typeof options === "object" && "modal" in options && options.modal);
     assert.ok("detail" in options && typeof options.detail === "string");
     assert.match(options.detail, /your chat agent/);
-    assert.match(options.detail, /select the Diagram agent/);
     assert.match(options.detail, /Ctrl\/Cmd\/Shift\+click/);
-    assert.match(options.detail, /Highlight Path/);
-    assert.match(options.detail, /Clear Selection.*agent highlights/);
   });
 
   test("loads without formatting a number, which first loads locale data", () => {
@@ -153,7 +143,7 @@ suite("extension", function () {
     const scripts = (await vscode.workspace.fs.readDirectory(chunks))
       .filter(([name]) => name.endsWith(".js"))
       .map(([name]) => vscode.Uri.joinPath(chunks, name));
-    for (const script of [...scripts, vscode.Uri.joinPath(dist, "standalone.js")]) {
+    for (const script of scripts) {
       assert.doesNotMatch(await read(script), zrender, script.path);
     }
   });
@@ -169,68 +159,6 @@ suite("extension", function () {
     assert.match(state, /"Test flow"/);
     assert.match(state, /A\[Start\] --> B\{Valid\?\}/);
     assert.doesNotMatch(state, /fails to render/);
-  });
-
-  test("finds rendered labels and parallel edge ids without reading source", async () => {
-    assert.match(
-      await invoke("diagram_render", {
-        source: "flowchart LR\n A[Cache] -->|put| B[Store]\n A -->|put| B",
-      }),
-      /^Rendered/,
-    );
-    const page: ItemPage = JSON.parse(
-      await invoke("diagram_getState", { detail: "items", query: "Cache" }),
-    );
-    assert.strictEqual(page.totalItems, 4);
-    assert.strictEqual(page.matchedItems, 3);
-    assert.ok(page.items.some(({ id, label }) => id === "A" && label === "Cache"));
-    const edges = page.items.filter(({ relationship }) => relationship);
-    assert.strictEqual(edges.length, 2);
-    assert.notStrictEqual(edges[0]?.id, edges[1]?.id);
-    assert.match(
-      await invoke("diagram_annotate", { marks: [{ id: edges[0]?.id }] }),
-      /Marked 1 item/,
-    );
-  });
-
-  test("pages through repeated chart names using ids accepted by image crops", async () => {
-    const source = JSON.stringify({
-      xAxis: { type: "category", data: ["Same", "Same"] },
-      yAxis: {},
-      series: [
-        { name: "First", type: "bar", data: [1, 2] },
-        { name: "Second", type: "bar", data: [3, 4] },
-      ],
-    });
-    assert.match(await invoke("diagram_render", { language: "echarts", source }), /^Rendered/);
-    const first: ItemPage & { revision: number } = JSON.parse(
-      await invoke("diagram_getState", { detail: "items", query: "Same", maxItems: 1 }),
-    );
-    assert.strictEqual(first.matchedItems, 4);
-    assert.strictEqual(first.nextItem, 2);
-    const rest: ItemPage & { revision: number } = JSON.parse(
-      await invoke("diagram_getState", {
-        detail: "items",
-        query: "Same",
-        startItem: first.nextItem,
-      }),
-    );
-    assert.strictEqual(rest.revision, first.revision);
-    assert.strictEqual(rest.nextItem, undefined);
-    const ids = [...first.items, ...rest.items].map(({ id }) => id);
-    assert.strictEqual(new Set(ids).size, 4);
-    assert.ok(
-      ids.every((id) => /^(First|Second)\/Same \(item [12]\)$/.test(id)),
-      ids.join(", "),
-    );
-    const image = await vscode.lm.invokeTool("diagram_getImage", {
-      input: { ids: [ids[0]] },
-      toolInvocationToken: undefined,
-    });
-    assert.ok(
-      image.content.some((part) => part instanceof vscode.LanguageModelDataPart),
-      toolText(image),
-    );
   });
 
   test("gives a model an image of the drawing through the registered tool", async () => {
@@ -249,47 +177,6 @@ suite("extension", function () {
     assert.strictEqual(Buffer.from(image.data).subarray(1, 4).toString(), "PNG");
   });
 
-  test("lets an agent read a source range and edit it with the returned revision", async () => {
-    assert.match(
-      await invoke("diagram_render", { source: "flowchart TD\n  A[Start] --> B[Finish]" }),
-      /^Rendered/,
-    );
-    const page = await invoke("diagram_getState", { startLine: 2, endLine: 2 });
-    const revision = Number(/^Revision: (\d+)/.exec(page)?.[1]);
-    const oldText = /```mermaid\n([\s\S]*?)\n```/.exec(page)?.[1];
-    assert.ok(Number.isInteger(revision), page);
-    assert.strictEqual(oldText, "  A[Start] --> B[Finish]");
-    const input = {
-      revision,
-      edits: [{ oldText, newText: "  A[Start] --> C[Review] --> B[Finish]" }],
-    };
-    const edited = await invoke("diagram_edit", input);
-    assert.match(edited, /Revision: /);
-    assert.match(await invoke("diagram_getState", { startLine: 2 }), /C\[Review\]/);
-    assert.match(await invoke("diagram_edit", input), /changed|revision/i);
-  });
-
-  test("lets an agent search for a label and copy the result into a guarded edit", async () => {
-    assert.match(
-      await invoke("diagram_render", {
-        source: 'flowchart TD\n  A["parse(input)"] --> B[Finish]',
-      }),
-      /^Rendered/,
-    );
-    const found = await invoke("diagram_getState", { query: "parse(input)", contextLines: 0 });
-    const revision = Number(/^Revision: (\d+)/.exec(found)?.[1]);
-    const oldText = /```mermaid\n([\s\S]*?)\n```/.exec(found)?.[1];
-    assert.strictEqual(oldText, '  A["parse(input)"] --> B[Finish]');
-    assert.match(
-      await invoke("diagram_edit", {
-        revision,
-        edits: [{ oldText, newText: '  A["parse(input)"] --> C[Validate] --> B[Finish]' }],
-      }),
-      /Edited the/,
-    );
-    assert.match(await invoke("diagram_getState", { query: "Validate" }), /C\[Validate\]/);
-  });
-
   test("tells the agent that a tree series draws only the first of its trees", async () => {
     const tree = (...names: string[]) =>
       invoke("diagram_render", {
@@ -300,7 +187,7 @@ suite("extension", function () {
       });
     const warning =
       "Tree series 1 has 2 trees in its data, of which ECharts draws only the first: put them under one root node to draw them all.";
-    assert.ok((await tree("A", "B")).includes(`\n\n${warning}\n\nRevision: `));
+    assert.ok((await tree("A", "B")).endsWith(`\n\n${warning}`));
     assert.ok((await invoke("diagram_getState", {})).includes(`\n${warning}\n`));
     assert.doesNotMatch(await tree("A"), /Tree series/);
     assert.doesNotMatch(await invoke("diagram_getState", {}), /Tree series/);
@@ -319,13 +206,10 @@ suite("extension", function () {
 
   test("reports syntax errors back to the agent", async () => {
     const text = await invoke("diagram_render", { source: "flowchart TD\n  A --> --> B[" });
-    assert.match(text, /failed to render/);
+    assert.match(text, /fails to render/);
 
     const state = await invoke("diagram_getState", {});
     assert.match(state, /fails to render/);
-
-    const pick = await invoke("diagram_pickNodes", { prompt: "Which part?" });
-    assert.match(pick, /No node was picked: The diagram fails to render/);
   });
 
   test("renders an ECharts option", async () => {
@@ -361,89 +245,8 @@ suite("extension", function () {
       source: '{"series": [{"type": "bar"}',
       language: "echarts",
     });
-    assert.match(text, /failed to render/);
+    assert.match(text, /fails to render/);
     assert.match(text, /could not be parsed/);
-  });
-
-  test("charts inline data", async () => {
-    const text = await invoke("diagram_chart", {
-      type: "bar",
-      title: "Sales",
-      data: "region,sales\nNorth,10\nSouth,20\nEast,5",
-    });
-    assert.match(
-      text,
-      /^Rendered the bar chart of inline data .*\. Charted "sales" by "region"\.\n\nThe data was read as: 3 rows;/,
-    );
-
-    const state = await invoke("diagram_getState", {});
-    assert.match(state, /"Sales"/);
-    assert.match(state, /North/);
-    assert.doesNotMatch(state, /Refresh/);
-  });
-
-  test("charts the data in a workspace file, which can be refreshed", async () => {
-    // The test workspace is src/test/workspace.
-    const text = await invoke("diagram_chart", { type: "pie", file: "sizes.tsv" });
-    assert.match(text, /Rendered the pie chart of file/);
-    const state = await invoke("diagram_getState", {});
-    assert.match(state, /"Pie chart of sizes\.tsv"/);
-    assert.match(state, /Refresh/);
-  });
-
-  test("reports chart input errors back to the agent", async () => {
-    const text = await invoke("diagram_chart", { type: "pie", data: "a,1", file: "x.csv" });
-    assert.match(text, /No chart was rendered/);
-    assert.match(
-      await invoke("diagram_chart", { type: "bar", data: "a b\nc d" }),
-      /^No chart was rendered: No column holds numbers.*\n\nThe data was read as: 2 rows; columns: "Column 1" \(text\)/,
-    );
-  });
-
-  test("inspects and updates the current chart through registered tools", async () => {
-    await invoke("diagram_chart", {
-      type: "bar",
-      data: "region,sales\nNorth,10\nSouth,20\nEast,5",
-      title: "Regional sales",
-    });
-    const before = await invoke("diagram_getState", {});
-    const inspection = await invoke("diagram_inspectData", { sampleRows: 1 });
-    assert.match(inspection, /"rowCount":3/);
-    assert.match(inspection, /"name":"sales","numeric":true/);
-    assert.strictEqual(await invoke("diagram_getState", {}), before);
-
-    const changed = await invoke("diagram_updateChart", {
-      type: "horizontalBar",
-      sort: "descending",
-      limit: 2,
-    });
-    assert.match(changed, /^Updated the bar chart using the loaded data/);
-    // The model learns how the data was read, as from diagram_chart.
-    assert.match(
-      changed,
-      /Charted "sales" by "region"; kept the first 2 of 3 rows\.\n\nRevision: \d+\.$/,
-    );
-    const after = await invoke("diagram_getState", {});
-    assert.match(after, /"type":"horizontalBar"/);
-    assert.match(after, /"limit":2/);
-    assert.match(after, /Regional sales/);
-
-    const invalid = await invoke("diagram_updateChart", { valueColumns: ["missing"] });
-    assert.match(invalid, /^The chart was not updated:/);
-    assert.strictEqual(await invoke("diagram_getState", {}), after);
-  });
-
-  test("exposes bounded workspace discovery and file reads through registered tools", async () => {
-    assert.strictEqual(await invoke("diagram_findFiles", { glob: "**/sizes.tsv" }), "sizes.tsv");
-    const contents = await invoke("diagram_readFile", {
-      file: "sizes.tsv",
-      startLine: 1,
-      endLine: 2,
-    });
-    assert.match(
-      contents,
-      /^sizes\.tsv, lines 1-2 of \d+:\n1: src\t120\n2: test\t30\nContinue with "startLine" 3\.$/,
-    );
   });
 
   test("marks the diagram already shown, and clears the marks again", async () => {
@@ -471,7 +274,7 @@ suite("extension", function () {
 
     // The marks belong to the state a later request sees, and the diagram is still the one drawn.
     const state = await invoke("diagram_getState", {});
-    assert.match(state, /Marked nodes: "parse" \(current\)\./);
+    assert.match(state, /Marked: "parse" \(current\)\./);
     assert.match(state, /flowchart LR/);
 
     assert.strictEqual(await invoke("diagram_annotate", {}), "Cleared the diagram's marks.");
@@ -486,10 +289,6 @@ suite("extension", function () {
     assert.match(
       await invoke("diagram_render", { source: "A", language: "dot" }),
       /Unknown language "dot"/,
-    );
-    assert.match(
-      await invoke("diagram_pickNodes", {}),
-      /No node was picked: Give "prompt", the question/,
     );
     assert.match(
       await invoke("diagram_annotate", { marks: [{ id: "a", mark: "red" }] }),

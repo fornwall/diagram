@@ -3,34 +3,20 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { linkTexts } from "../links";
-import { clickToAskQuery, type Diagram, type DiagramPanel, type DiagramState } from "../panel";
-import type { ToWebview } from "../protocol";
+import { clickToAskQuery, type Diagram, type DiagramState } from "../panel";
 import { AnnotateDiagramTool, GetDiagramStateTool, RenderDiagramTool } from "../tools";
 import { WebviewChannel } from "../webviewChannel";
+import { afterTest, interceptCommand, recordMessages, replace, tempDir } from "./afterTest";
 import {
-  afterTest,
-  cancellationSource,
-  diagramExtension,
-  interceptCommand,
-  recordFilePaths,
-  recordMessages,
-  replace,
-  tempDir,
-  workspaceLink,
-} from "./afterTest";
-import {
-  drawChart,
   FakeWebview,
   memento,
   newFakePanel,
   newPanel,
   openWebviewPanel,
   recordChat,
-  showInFake,
   webviewTabs,
   within,
 } from "./newPanel";
-import { testColors } from "./themeColors";
 import { invokeTool } from "./toolText";
 
 const flowchart: Diagram = {
@@ -38,33 +24,6 @@ const flowchart: Diagram = {
   source: "flowchart LR\n  A[Parser] --> B[Checker]",
   title: "Flow",
 };
-
-/** A chart of a file as saved when it is too large to keep: without its source. */
-const withoutSource: DiagramState = {
-  language: "echarts",
-  title: "Sizes",
-  chart: { type: "pie", file: "sizes.tsv" },
-  origin: "tool",
-  editedByUser: false,
-};
-
-const PIE = JSON.stringify({ series: [{ type: "pie", data: [1] }] });
-
-/** A pie chart of the workspace's sizes.tsv, which a refresh reads again, drawn as the source. */
-function sizesPie(source = PIE): Diagram {
-  return { language: "echarts", source, title: "Sizes", chart: { type: "pie", file: "sizes.tsv" } };
-}
-
-/** Holds back the progress that a refresh shows, and so the refresh, until resumed. */
-function holdProgress(): () => void {
-  const progress = vscode.window.withProgress;
-  const resumed = Promise.withResolvers<void>();
-  replace(vscode.window, "withProgress", async (options, task) => {
-    await resumed.promise;
-    return progress(options, task);
-  });
-  return resumed.resolve;
-}
 
 /**
  * Leaves what the page is sent unanswered, and holds the panel's timers of 15 seconds, after which
@@ -108,10 +67,6 @@ function hangPage(webview: FakeWebview): {
   };
 }
 
-function pick(panel: DiagramPanel, token = new vscode.CancellationTokenSource().token) {
-  return panel.pickNodes("Which part?", false, token);
-}
-
 /**
  * Records the requests to chat and the files and URLs opened, which clicks on nodes lead to, until
  * the test ends.
@@ -152,37 +107,6 @@ suite("panel", function () {
     );
   });
 
-  test("offers Export and Chart Options once there is something to act on", async () => {
-    const contexts: Record<string, unknown> = {};
-    interceptCommand("setContext", (key, value) => {
-      contexts[key as string] = value;
-    });
-    const { panel } = await newFakePanel();
-    assert.deepStrictEqual(contexts, {
-      "diagram.hasDiagram": false,
-      "diagram.chartOptionsAvailable": false,
-    });
-    assert.ok((await panel.render(flowchart, "tool")).ok);
-    assert.deepStrictEqual(contexts, {
-      "diagram.hasDiagram": true,
-      "diagram.chartOptionsAvailable": false,
-    });
-    const restored = await newFakePanel(new Map([["diagram.state", withoutSource]]));
-    assert.ok(restored.panel.current?.chart);
-    assert.deepStrictEqual(contexts, {
-      "diagram.hasDiagram": true,
-      "diagram.chartOptionsAvailable": true,
-    });
-    // Nor in the panel's title bar and context menu while it is empty.
-    const menus: Record<string, { command: string; when: string }[]> =
-      diagramExtension().packageJSON.contributes.menus;
-    const exports = Object.values(menus)
-      .flat()
-      .filter(({ command }) => command === "diagram.export");
-    assert.strictEqual(exports.length, 3);
-    for (const { when } of exports) assert.match(when, /(^| && )diagram\.hasDiagram$/);
-  });
-
   test("queued edits, writes and selections cannot act on a replacement diagram", async () => {
     const { panel, webview } = await newFakePanel();
     webview.answer = undefined;
@@ -217,30 +141,6 @@ suite("panel", function () {
       source: flowchart.source,
     });
     assert.strictEqual(panel.current?.source, flowchart.source, "failed diagrams remain editable");
-  });
-
-  test("a new diagram drops inherited document bindings and resets its viewport", async () => {
-    const { panel, webview } = await newFakePanel();
-    const openedFrom = "file:///diagrams.md";
-    const document = {
-      uri: openedFrom,
-      fence: { ...flowchart, openingLine: 0, lastLine: 3, prefix: "" },
-    };
-    assert.ok((await panel.render({ ...flowchart, document, openedFrom }, "document")).ok);
-    const first = webview.render.diagram;
-    assert.ok((await panel.render(flowchart, "tool")).ok);
-    assert.strictEqual(webview.render.diagram, first);
-    assert.deepStrictEqual(panel.current?.document, { ...document, replaced: true });
-    assert.strictEqual(panel.current?.openedFrom, openedFrom);
-
-    assert.ok((await panel.render(flowchart, "tool", undefined, { newDiagram: true })).ok);
-    assert.notStrictEqual(webview.render.diagram, first);
-    assert.strictEqual(panel.current?.document, undefined);
-    assert.strictEqual(panel.current?.openedFrom, undefined);
-
-    const second = webview.render.diagram;
-    assert.ok((await panel.render(flowchart, "tool")).ok);
-    assert.strictEqual(webview.render.diagram, second, "only the requested render starts anew");
   });
 
   test("leaves the focus in the editor as an agent draws and marks, and takes it when shown", async () => {
@@ -282,24 +182,6 @@ suite("panel", function () {
     });
     assert.strictEqual(panel.revision, 1);
     assert.strictEqual(panel.current?.source, flowchart.source);
-  });
-
-  test("closing the panel ends a waiting render and pick, without blaming the diagram", async () => {
-    const panel = newPanel();
-    const rendering = panel.render(flowchart, "tool");
-    const picking = pick(panel);
-    panel.dispose();
-    assert.deepStrictEqual(await rendering, {
-      ok: false,
-      kind: "unavailable",
-      error: "The diagram panel was closed before it finished rendering.",
-      revision: 1,
-    });
-    assert.deepStrictEqual(await picking, {
-      picked: false,
-      reason: "The user closed the diagram panel.",
-    });
-    assert.doesNotMatch(panel.describeForModel() ?? "", /fails to render/);
   });
 
   test("a closed panel knows no drawing, which asking for its ids opens it again to draw", async () => {
@@ -371,101 +253,6 @@ suite("panel", function () {
     assert.strictEqual(await image, "The diagram changed while it was drawn. Try again.");
     assert.ok(!reopened.sent.some((message) => message.type === "export"));
   });
-
-  test("a pick on a drawing that the page then fails to draw again ends as the render does", async () => {
-    const { panel, webview } = await newFakePanel();
-    assert.ok((await panel.render(flowchart, "tool")).ok);
-    const picking = pick(panel);
-    // The page reloads, as when its tab moves to another window, and cannot draw the diagram now.
-    webview.failNextRender("Parse error");
-    webview.sent.length = 0;
-    await webview.receive({ type: "ready" });
-    const outcome = await picking;
-    assert.ok(
-      !outcome.picked && /fails to render, so there is nothing to pick from/.test(outcome.reason),
-    );
-    const types = webview.sent.map((message) => message.type);
-    assert.deepStrictEqual(
-      types.filter((type) => type !== "chartOptions"),
-      ["render", "startPick", "endPick"],
-    );
-    assert.ok(!(await pick(panel)).picked);
-  });
-
-  test("replacing a pending render ends it and replays only the latest diagram", async () => {
-    const { panel, webview } = await newFakePanel();
-    webview.answer = undefined;
-    const first = panel.render(flowchart, "tool");
-    const second = panel.render({ ...flowchart, title: "Replacement" }, "tool");
-    assert.deepStrictEqual(await first, {
-      ok: false,
-      kind: "unavailable",
-      error: "The diagram was replaced before it finished rendering.",
-      revision: 1,
-    });
-    webview.sent.length = 0;
-    await webview.receive({ type: "ready" });
-    assert.strictEqual(webview.sent.length, 2);
-    assert.deepStrictEqual(webview.sent[0], { type: "chartOptions" });
-    assert.strictEqual(webview.render.title, "Replacement");
-    await webview.finishRender();
-    assert.ok((await second).ok);
-  });
-
-  test("ends a render and a waiting pick that cannot reach the page, without blaming the source", async () => {
-    const unavailable = /^The diagram panel is unavailable\.$/;
-    for (const [failing, deliver, error] of [
-      ["renders", (message: ToWebview) => message.type !== "render", unavailable],
-      ["every message", () => false, unavailable],
-      [
-        "every message, throwing",
-        () => {
-          throw new Error("Disconnected");
-        },
-        /Disconnected/,
-      ],
-    ] as const) {
-      const { panel, webview } = await newFakePanel();
-      webview.deliver = deliver;
-      const rendering = panel.render(flowchart, "tool");
-      const picking = pick(panel);
-      const outcome = await rendering;
-      assert.ok(!outcome.ok && outcome.kind === "unavailable", failing);
-      assert.match(outcome.error, error, failing);
-      assert.deepStrictEqual(await picking, { picked: false, reason: outcome.error }, failing);
-      assert.strictEqual(panel.current?.error, undefined, failing);
-    }
-  });
-
-  for (const reload of ["moving the tab", "granting trust"]) {
-    test(`failed deliveries from before a reload by ${reload} cannot cancel replayed requests`, async () => {
-      const trust = new vscode.EventEmitter<void>();
-      afterTest(() => trust.dispose());
-      replace(vscode.workspace, "onDidGrantWorkspaceTrust", trust.event);
-      const { panel, webview } = await newFakePanel();
-      webview.answer = undefined;
-      const delivery = Promise.withResolvers<boolean>();
-      webview.deliver = () => delivery.promise;
-      const rendering = panel.render(flowchart, "tool");
-      const picking = pick(panel);
-      const startPick = webview.sent.findLast((message) => message.type === "startPick");
-      assert.ok(startPick);
-
-      webview.deliver = () => true;
-      // VS Code reloads a moved tab's page itself, which only the page's "ready" tells.
-      if (reload === "granting trust") trust.fire();
-      else await webview.receive({ type: "ready" });
-      delivery.resolve(false);
-      await new Promise((resolve) => setImmediate(resolve));
-      if (reload === "granting trust") await webview.receive({ type: "ready" });
-
-      await webview.finishRender();
-      const nodes = [{ id: "A", label: "Parser" }];
-      await webview.receive({ type: "picked", pickId: startPick.pickId, nodes });
-      assert.ok((await rendering).ok);
-      assert.deepStrictEqual(await picking, { picked: true, nodes });
-    });
-  }
 
   test("source is saved before the webview responds, without saving successful renders twice", async () => {
     const values = new Map<string, unknown>();
@@ -553,102 +340,6 @@ suite("panel", function () {
     assert.strictEqual(panel.current?.error, undefined);
   });
 
-  test("picking after an unavailable render retries it instead of waiting on an empty panel", async () => {
-    const { panel, webview } = await newFakePanel();
-    webview.deliver = (message) => message.type !== "render";
-    const unavailable = {
-      ok: false,
-      kind: "unavailable",
-      error: "The diagram panel is unavailable.",
-    } as const;
-    const renders = () => webview.sent.filter((message) => message.type === "render").length;
-    assert.deepStrictEqual(await panel.render(flowchart, "tool"), { ...unavailable, revision: 1 });
-    assert.strictEqual(panel.current?.error, undefined);
-
-    const picking = pick(panel);
-    assert.strictEqual(renders(), 2, "Picking must restart the failed render");
-    assert.deepStrictEqual(await picking, { picked: false, reason: unavailable.error });
-  });
-
-  for (const rejected of [false, true]) {
-    test(`opening a saved chart reports ${rejected ? "rejections" : "an unavailable browser"}`, async () => {
-      const state: DiagramState = {
-        language: "echarts",
-        source: '{"series":[{"type":"pie","data":[1,2]}]}',
-        title: "Chart",
-        origin: "tool",
-        editedByUser: false,
-      };
-      const { panel, webview } = await newFakePanel(new Map([["diagram.state", state]]));
-      // The page answers an export to HTML with the colors to draw the chart in.
-      webview.answer = (message) =>
-        message.type === "export"
-          ? { type: "exportTheme", requestId: message.requestId, colors: testColors }
-          : undefined;
-      const target = vscode.Uri.file(path.join(tempDir("diagram-save-test-"), "chart.html"));
-      const reported = Promise.withResolvers<string>();
-      replace(vscode.window, "showQuickPick", (async () => ({
-        label: "HTML page",
-        format: "html",
-      })) as unknown as typeof vscode.window.showQuickPick);
-      replace(vscode.window, "showSaveDialog", async () => target);
-      recordMessages("showInformationMessage", () => "Open");
-      recordMessages("showErrorMessage", (message) => reported.resolve(message));
-      replace(vscode.env, "openExternal", async (uri) => {
-        assert.strictEqual(uri.toString(), target.toString());
-        if (rejected) {
-          throw new Error("Browser unavailable");
-        }
-        return false;
-      });
-      await panel.exportDiagram();
-      const message = await reported.promise;
-      assert.match(fs.readFileSync(target.fsPath, "utf8"), /^<!DOCTYPE html>/);
-      assert.match(message, /Could not open the saved chart/);
-      assert.ok(message.includes(target.fsPath));
-      assert.match(message, rejected ? /Browser unavailable/ : /No application accepted/);
-    });
-  }
-
-  test("a pick ends when another pick, a new diagram or cancellation replaces it", async () => {
-    const { panel } = await newFakePanel();
-    assert.ok((await panel.render(flowchart, "tool")).ok);
-    const first = pick(panel);
-    const second = pick(panel);
-    assert.deepStrictEqual(await first, {
-      picked: false,
-      reason: "Another request to pick nodes replaced this one.",
-    });
-    const rendering = panel.render({ ...flowchart, source: "flowchart LR\n  C --> D" }, "tool");
-    assert.deepStrictEqual(await second, {
-      picked: false,
-      reason: "The diagram was replaced before the user picked.",
-    });
-    assert.ok((await rendering).ok);
-
-    const cancellation = cancellationSource();
-    const third = pick(panel, cancellation.token);
-    cancellation.cancel();
-    assert.deepStrictEqual(await third, { picked: false, reason: "The request was cancelled." });
-  });
-
-  test("a cancelled pick leaves an existing pick active", async () => {
-    const { panel } = await newFakePanel();
-    const cancellation = cancellationSource();
-    cancellation.cancel();
-    assert.ok((await panel.render(flowchart, "tool")).ok);
-    const active = pick(panel);
-    assert.deepStrictEqual(await pick(panel, cancellation.token), {
-      picked: false,
-      reason: "The request was cancelled.",
-    });
-    panel.dispose();
-    assert.deepStrictEqual(await active, {
-      picked: false,
-      reason: "The user closed the diagram panel.",
-    });
-  });
-
   test("opening chat keeps the current selection available to tools", async () => {
     const { panel, webview } = await newFakePanel();
     assert.ok((await panel.render(flowchart, "tool")).ok);
@@ -675,9 +366,7 @@ suite("panel", function () {
       assert.deepStrictEqual(webview.sent, []);
       assert.match(
         await invokeTool(new GetDiagramStateTool(panel), {}),
-        changed
-          ? /selected these nodes in the panel: "Checker"/
-          : /selected these nodes in the panel: "Parser"/,
+        changed ? /has selected: "Checker"/ : /has selected: "Parser"/,
       );
     }
   });
@@ -702,7 +391,7 @@ suite("panel", function () {
     const { panel, webview } = await newFakePanel();
     assert.ok((await panel.render(flowchart, "tool")).ok);
     await webview.select([{ id: "A", label: "Parser" }]);
-    assert.match(panel.describeForModel() ?? "", /selected these nodes/);
+    assert.match(panel.describeForModel() ?? "", /has selected: /);
     await webview.receive({ type: "ready" });
     assert.match(panel.describeForModel() ?? "", /no nodes selected/);
   });
@@ -736,15 +425,6 @@ suite("panel", function () {
     panel.show(true);
     const [, replacement] = await webviewTabs((labels) => labels.join() === "Other,Diagram");
     assert.strictEqual(replacement?.group.viewColumn, old?.group.viewColumn);
-  });
-
-  test("a chart restored without its option, as a large one is saved, waits for Refresh", async () => {
-    const { panel } = await newFakePanel(new Map([["diagram.state", withoutSource]]));
-    assert.strictEqual(panel.current?.title, "Sizes");
-    assert.match(panel.describeForModel() ?? "", /Not drawn.*press Refresh/);
-    const picking = await pick(panel);
-    assert.ok(!picking.picked && /too large to keep/.test(picking.reason));
-    assert.ok((await panel.render(flowchart, "tool")).ok);
   });
 
   for (const failure of ["fails to render", "the panel cannot show"] as const) {
@@ -922,18 +602,6 @@ suite("panel", function () {
     assert.notStrictEqual(shown.viewColumn, webview.panel.viewColumn);
   });
 
-  test("large manual chart edits survive a reload", async () => {
-    const values = new Map<string, unknown>();
-    const { panel, webview } = await newFakePanel(values);
-    const edited = `${PIE}${" ".repeat(1_000_000)}`;
-    assert.ok((await panel.render(sizesPie(), "tool")).ok);
-    await webview.edit(edited);
-    const restored = newPanel(values);
-    afterTest(() => restored.dispose());
-    assert.strictEqual(restored.current?.source, edited);
-    assert.strictEqual(restored.current?.editedByUser, true);
-  });
-
   test("exporting waits for a successful render and reports an unavailable panel", async () => {
     const { panel, webview } = await newFakePanel();
     webview.answer = undefined;
@@ -960,220 +628,6 @@ suite("panel", function () {
       warnings.at(-1),
       "The diagram panel is unavailable. Use Diagram: Show Panel and try again.",
     );
-  });
-
-  test("refresh preserves manual styling through panel state restoration", async () => {
-    const values = new Map<string, unknown>();
-    let { panel, webview } = await newFakePanel(values);
-    const chart = { type: "bar", data: "name,value\nC,20\nD,40" } as const;
-    const option = JSON.parse(await drawChart(panel, chart, "name,value\nA,2\nB,4", "Sales"));
-    option.yAxis = {
-      ...(option.yAxis as object),
-      name: "Revenue",
-      axisLabel: { formatter: "USD {value}" },
-    };
-    await webview.edit(JSON.stringify(option));
-    panel.dispose();
-    ({ panel, webview } = await newFakePanel(values));
-    await webview.receive({ type: "refresh" });
-    const refreshed = JSON.parse(panel.current?.source ?? "");
-    assert.deepStrictEqual(refreshed.series[0].data, [20, 40]);
-    assert.deepStrictEqual(refreshed.xAxis.data, ["C", "D"]);
-    assert.strictEqual(refreshed.yAxis.name, "Revenue");
-    assert.strictEqual(refreshed.yAxis.axisLabel.formatter, "USD {value}");
-    assert.ok(panel.current?.editedByUser);
-    assert.match(
-      panel.describeForModel() ?? "",
-      /Manual styling of the generated option, which diagram_updateChart keeps: yAxis\.name = "Revenue", yAxis\.axisLabel = \{"formatter":"USD \{value\}"\}\. /,
-    );
-  });
-
-  test("blocked custom source is preserved without loading data", async () => {
-    const { panel, webview } = await newFakePanel();
-    const source = '{"series":[{"type":"pie","data":[1]}]}';
-    const edited = '{series:[{type:"pie",data:[1]}],tooltip:{formatter: () => "value"}}';
-    await panel.render(
-      {
-        language: "echarts",
-        source,
-        title: "Chart",
-        chart: { type: "pie", data: "name,value\nA,1" },
-      },
-      "tool",
-    );
-    await webview.edit(edited);
-    const progress = vscode.window.withProgress;
-    let loads = 0;
-    replace(vscode.window, "withProgress", async (options, task) => {
-      loads++;
-      return progress(options, task);
-    });
-    const errors = recordMessages("showErrorMessage");
-    await webview.receive({ type: "refresh" });
-    assert.strictEqual(loads, 0);
-    assert.strictEqual(panel.current?.source, edited);
-    assert.match(errors.join(), /source is kept.*Reset styling/);
-  });
-
-  test("a failed refresh render restores the previous source and presentation", async () => {
-    const { panel, webview } = await newFakePanel();
-    const chart = { type: "pie", data: "name,value\nA,9" } as const;
-    await drawChart(panel, chart, "name,value\nA,1");
-    assert.ok(panel.annotate({ marks: [{ id: "A", kind: "good" }], dim: false }).ok);
-    const before = panel.current;
-    webview.failNextRender("test refresh failure");
-    const errors = recordMessages("showErrorMessage");
-    await webview.receive({ type: "refresh" });
-    assert.strictEqual(panel.current?.source, before?.source);
-    assert.deepStrictEqual(panel.current?.chartPresentation, before?.chartPresentation);
-    assert.match(errors.join(), /test refresh failure.*previous chart is kept/);
-    assert.match(panel.describeForModel() ?? "", /"A" \(good\)/);
-  });
-
-  test("refreshing chart data ends a pending pick", async () => {
-    const { panel, webview } = await newFakePanel();
-    assert.ok((await panel.render(sizesPie(), "tool")).ok);
-    const picking = pick(panel);
-    await webview.receive({ type: "refresh" });
-    assert.deepStrictEqual(await picking, {
-      picked: false,
-      reason: "The chart data was refreshed before the user picked.",
-    });
-  });
-
-  for (const action of ["cancel", "close the panel", "draw another diagram"]) {
-    test(`a refresh's command stops as the user may ${action}`, async () => {
-      const { panel, webview } = await newFakePanel();
-      const chart = { type: "pie", command: "sleep 60" } as const;
-      const diagram = { language: "echarts", source: PIE, title: "Sizes", chart } as const;
-      assert.ok((await panel.render(diagram, "tool")).ok);
-      const progress = Promise.withResolvers<vscode.CancellationTokenSource>();
-      replace(vscode.window, "withProgress", (options, task) => {
-        assert.ok(options.cancellable);
-        const source = cancellationSource();
-        progress.resolve(source);
-        return task({ report() {} }, source.token);
-      });
-      const errors = recordMessages("showErrorMessage");
-      const refreshing = webview.receive({ type: "refresh" });
-      const source = await progress.promise;
-      if (action === "cancel") source.cancel();
-      else if (action === "close the panel") webview.panel.dispose();
-      else assert.ok((await panel.render(flowchart, "tool")).ok);
-      await refreshing;
-      assert.strictEqual(panel.current?.source, action.startsWith("draw") ? flowchart.source : PIE);
-      assert.deepStrictEqual(errors, []);
-    });
-  }
-
-  test("a refresh that started before a hand edit keeps the edit", async () => {
-    const { panel, webview } = await newFakePanel();
-    const pie = (name: string) =>
-      JSON.stringify({ series: [{ type: "pie", data: [{ name, value: 1 }] }] });
-    assert.ok((await panel.render(sizesPie(pie("A")), "tool")).ok);
-    const refreshing = webview.receive({ type: "refresh" });
-    await Promise.all([refreshing, webview.edit(pie("B"))]);
-    assert.strictEqual(panel.current?.source, pie("B"));
-    assert.ok(panel.current?.editedByUser);
-  });
-
-  /**
-   * A chart of a link in the workspace to its sizes.tsv, which `swap()` leads to a file outside
-   * instead, of the item "Out".
-   */
-  async function linkedChart() {
-    const outside = path.join(tempDir("diagram-refresh-"), "data.csv");
-    fs.writeFileSync(outside, "name,value\nOut,7");
-    const link = workspaceLink("diagram-refresh-link.tsv", "sizes.tsv");
-    const { panel, webview } = await newFakePanel();
-    const chart = { type: "pie", file: path.basename(link) } as const;
-    const diagram = { language: "echarts", source: PIE, title: "Sizes", chart } as const;
-    assert.ok((await panel.render(diagram, "tool")).ok);
-    const swap = () => {
-      fs.rmSync(link);
-      fs.symlinkSync(outside, link);
-    };
-    return { panel, webview, outside, swap };
-  }
-
-  test("a refresh asks before reading a chart's file that now leads out of the workspace", async () => {
-    const { panel, webview, outside, swap } = await linkedChart();
-    let answer: string | undefined;
-    const asked = recordMessages("showWarningMessage", () => answer);
-    await webview.receive({ type: "refresh" });
-    const inside = panel.current?.source;
-    assert.match(inside ?? "", /src/);
-    assert.deepStrictEqual(asked, []);
-
-    swap();
-    const paths = recordFilePaths();
-    await webview.receive({ type: "refresh" });
-    assert.deepStrictEqual(asked, ["Read the chart's data file again?"]);
-    assert.strictEqual(panel.current?.source, inside);
-    assert.ok(!paths.includes(outside), "the file outside was touched");
-
-    answer = "Read";
-    await webview.receive({ type: "refresh" });
-    assert.match(panel.current?.source ?? "", /Out/);
-  });
-
-  test("a refresh does not read a chart's file that leads out of the workspace once checked", async () => {
-    const { panel, webview, outside, swap } = await linkedChart();
-    const errors = recordMessages("showErrorMessage");
-    const resume = holdProgress();
-    const refreshing = webview.receive({ type: "refresh" });
-    swap();
-    const paths = recordFilePaths();
-    resume();
-    await refreshing;
-    assert.strictEqual(panel.current?.source, PIE);
-    assert.ok(!paths.includes(outside), "the file outside was touched");
-    assert.deepStrictEqual(errors, [
-      "Could not refresh the chart: The file diagram-refresh-link.tsv leads out of the " +
-        `workspace, to ${outside}, so it was not read without asking the user. Try again to be asked.`,
-    ]);
-  });
-
-  for (const action of ["edit and revert", "close and reopen"]) {
-    test(`refresh does not overwrite the chart after ${action}`, async () => {
-      const { panel, webview } = await newFakePanel();
-      assert.ok((await panel.render(sizesPie(), "tool")).ok);
-      const resume = holdProgress();
-      const refreshing = webview.receive({ type: "refresh" });
-      if (action === "edit and revert") {
-        await webview.edit(`${PIE} `);
-        await webview.edit(PIE);
-      } else {
-        webview.panel.dispose();
-        await showInFake(panel);
-      }
-      resume();
-      await refreshing;
-      assert.strictEqual(panel.current?.source, PIE);
-      assert.strictEqual(panel.current?.editedByUser, action === "edit and revert");
-    });
-  }
-
-  test("a reloaded page draws the same revision, which a refresh and an update still apply to", async () => {
-    const { panel, webview } = await newFakePanel();
-    assert.ok((await panel.render(sizesPie(), "tool")).ok);
-    const revision = panel.revision;
-    const resume = holdProgress();
-    const refreshing = webview.receive({ type: "refresh" });
-    const reload = async () => {
-      await webview.receive({ type: "ready" });
-      await new Promise((resolve) => setImmediate(resolve));
-    };
-    await reload();
-    assert.strictEqual(panel.revision, revision);
-    resume();
-    await refreshing;
-    assert.match(panel.current?.source ?? "", /"src"/);
-    assert.strictEqual(panel.revision, revision + 1);
-
-    await reload();
-    const token = new vscode.CancellationTokenSource().token;
-    assert.ok((await panel.updateChart({ limit: 1, revision: revision + 1 }, token)).ok);
   });
 
   test("a diagram restored after a restart keeps its revision, which a model may still hold", async () => {
@@ -1227,7 +681,7 @@ suite("panel", function () {
     const source = `${flowchart.source}\n  B --> C`;
     assert.ok((await panel.render({ ...flowchart, source }, "tool")).ok);
     await webview.select([{ id: "C", label: "C" }]);
-    assert.match(panel.describeForModel() ?? "", /has selected these nodes in the panel: "C"/);
+    assert.match(panel.describeForModel() ?? "", /has selected: "C"/);
     const edit = { source: flowchart.source, title: flowchart.title };
     assert.ok((await panel.editByAgent(edit, panel.revision)).ok);
     assert.deepStrictEqual(webview.render.selection, ["C"]);
@@ -1251,7 +705,7 @@ suite("panel", function () {
       ["annotate"],
     );
     const described = panel.describeForModel() ?? "";
-    assert.match(described, /Marked nodes: "A" \(problem\)\./);
+    assert.match(described, /Marked: "A" \(problem\)\./);
     assert.match(described, /Everything else is faded\./);
 
     sent.length = 0;
@@ -1344,7 +798,7 @@ suite("panel", function () {
     assert.ok((await panel.render(chart, "tool")).ok);
     assert.match(
       panel.describeForModel() ?? "",
-      /Chart items that share a name \(mark them by these exact ids with diagram_annotate\): "Yes" \(ids: "Yes \(q1\)", "Yes \(q2\)"\)\./,
+      /Chart items that share a name, by id: "Yes" \(ids: "Yes \(q1\)", "Yes \(q2\)"\)\./,
     );
     const result = await invokeTool(new AnnotateDiagramTool(panel), {
       marks: [{ id: "Yes" }, { id: "Yes (q2)" }],
@@ -1358,69 +812,6 @@ suite("panel", function () {
     assert.ok(outcome.ok);
     assert.deepStrictEqual(outcome.annotation.marks, []);
     assert.deepStrictEqual(outcome.repeated, repeatedNames);
-  });
-
-  test("the marks go back on a webview that reloaded", async () => {
-    const { panel, webview } = await newFakePanel();
-    const { sent } = webview;
-    assert.ok((await panel.render(flowchart, "tool")).ok);
-    assert.ok(panel.annotate({ marks: [{ id: "B", kind: "current" }], dim: false }).ok);
-    sent.length = 0;
-    await webview.receive({ type: "ready" });
-    // Restore the controls, then the diagram and the marks that belong on it.
-    assert.deepStrictEqual(
-      sent.map((message) => message.type),
-      ["chartOptions", "render", "annotate"],
-    );
-    assert.deepStrictEqual(sent[0], { type: "chartOptions" });
-    const annotate = sent[2];
-    assert.ok(annotate?.type === "annotate");
-    assert.deepStrictEqual(annotate.marks, [{ id: "B", kind: "current" }]);
-  });
-
-  test("annotate and pickNodes say why there is nothing to mark or pick", async () => {
-    const { panel, webview } = await newFakePanel();
-    webview.answer = undefined;
-    const mark = () => panel.annotate({ marks: [{ id: "A", kind: "info" }], dim: false });
-    for (const nothing of [mark(), await pick(panel)]) {
-      assert.match(JSON.stringify(nothing), /no diagram.*Render one with diagram_render/i);
-    }
-    const broken = { ...flowchart, source: "flowchart TD\n  A --> --> B[" };
-    // A pick that starts before the render fails ends when it does.
-    const rendering = panel.render(broken, "tool");
-    const waiting = pick(panel);
-    await webview.finishRender("Parse error");
-    assert.deepStrictEqual(await rendering, {
-      ok: false,
-      kind: "invalid",
-      error: "Parse error",
-      revision: 1,
-    });
-    for (const failed of [await waiting, await pick(panel)]) {
-      assert.ok(!failed.picked && /fails to render/.test(failed.reason), JSON.stringify(failed));
-    }
-    const outcome = mark();
-    assert.ok(!outcome.ok && /fails to render, so there is nothing to mark/.test(outcome.reason));
-  });
-
-  test("exporting says why there is nothing to export", async () => {
-    const warnings = recordMessages("showWarningMessage");
-    const { panel, webview } = await newFakePanel();
-    const restored = await newFakePanel(new Map([["diagram.state", withoutSource]]));
-    await panel.exportDiagram();
-    webview.failNextRender("Oops");
-    assert.ok(!(await panel.render(flowchart, "tool")).ok);
-    await panel.exportDiagram();
-    webview.failNextRender("Bad option");
-    assert.ok(!(await panel.render({ language: "echarts", source: PIE, title: "Pie" }, "tool")).ok);
-    await panel.exportDiagram();
-    await restored.panel.exportDiagram();
-    assert.deepStrictEqual(warnings, [
-      "Open or draw a diagram before exporting it.",
-      "There is nothing to export, as the diagram fails to render: Oops",
-      "There is nothing to export, as the chart fails to render: Bad option",
-      "Press Refresh to draw the chart again, then export it.",
-    ]);
   });
 
   test("sends follow-ups to the current chat without changing agents", async () => {
@@ -1443,27 +834,7 @@ suite("panel", function () {
     await ask();
     assert.deepStrictEqual(errors, ["Could not send the request to chat: Chat is disabled."]);
     assert.strictEqual(webview.sent.length, sent);
-    assert.match(panel.describeForModel() ?? "", /selected these nodes in the panel: "Parser"/);
-  });
-
-  test("chart options and chart updates need a chart made from data", async () => {
-    const { panel, webview } = await newFakePanel();
-    const messages = recordMessages("showInformationMessage");
-    const token = new vscode.CancellationTokenSource().token;
-    for (const drawn of [false, true]) {
-      if (drawn) assert.ok((await panel.render(flowchart, "tool")).ok);
-      webview.sent.length = 0;
-      panel.toggleChartOptions();
-      assert.deepStrictEqual(webview.sent, []);
-      await assert.rejects(
-        panel.updateChart({ limit: 2 }, token),
-        /^Error: The current diagram is not a generated chart\. Create one with diagram_chart first\.$/,
-      );
-    }
-    assert.deepStrictEqual(
-      messages,
-      Array(2).fill("Chart Options is available for charts created from data."),
-    );
+    assert.match(panel.describeForModel() ?? "", /has selected: "Parser"/);
   });
 
   test("a render or an export that the page never answers ends after 15 seconds", async () => {
@@ -1610,48 +981,5 @@ suite("panel", function () {
     assert.strictEqual(timers.pending, 1);
     await webview.finishRender();
     assert.strictEqual(timers.pending, 0);
-  });
-
-  test("a chart update that hangs the page does not leave the kept chart unfinished", async () => {
-    const values = new Map<string, unknown>();
-    const { panel, webview } = await newFakePanel(values);
-    const chart = { type: "bar", data: "name,amount\na,1\nb,2\nc,3" } as const;
-    const source = await drawChart(panel, chart, chart.data, "Amounts");
-    const timers = hangPage(webview);
-    const updating = panel.updateChart({ limit: 2 }, new vscode.CancellationTokenSource().token);
-    await new Promise((resolve) => setImmediate(resolve));
-    timers.expire();
-    assert.ok(!(await updating).ok);
-    // The page, still drawing the update, does not draw the kept chart in time either.
-    assert.strictEqual(webview.render.source, source);
-    timers.expire();
-    assert.strictEqual(panel.current?.error, undefined);
-    assert.strictEqual((await newFakePanel(values)).webview.render.notDrawn, undefined);
-  });
-
-  test("a chart update that the page answers after 15 seconds cannot replace the kept chart", async () => {
-    const { panel, webview } = await newFakePanel();
-    const chart = { type: "bar", data: "name,amount\na,1\nb,2\nc,3" } as const;
-    const source = await drawChart(panel, chart, chart.data, "Amounts");
-    const timers = hangPage(webview);
-    const token = new vscode.CancellationTokenSource().token;
-    const updating = panel.updateChart({ limit: 2 }, token);
-    await new Promise((resolve) => setImmediate(resolve));
-    const abandoned = webview.render;
-    assert.notStrictEqual(abandoned.source, source);
-    timers.expire();
-    const outcome = await updating;
-    assert.ok(!outcome.ok);
-    assert.match(outcome.error, /did not respond.*previous chart is kept/);
-
-    // The page draws the abandoned chart late, and then the kept one again.
-    const { requestId } = abandoned;
-    await webview.receive({ type: "renderError", requestId, message: "Late" });
-    await webview.receive({ type: "rendered", requestId, diagramType: "bar" });
-    assert.strictEqual(panel.current?.source, source);
-    assert.strictEqual(panel.current?.error, undefined);
-    assert.strictEqual(webview.render.source, source);
-    await webview.finishRender();
-    assert.doesNotMatch(panel.describeForModel() ?? "", /not showing it/);
   });
 });

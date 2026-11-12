@@ -7,10 +7,7 @@
 export const DIRECTIVE =
   /%{2}{\s*(?:(\w+)\s*:|(\w+))\s*(?:(\w+)|((?:(?!}%{2}).|\r?\n)*))?\s*(?:}%{2})?/gi;
 
-/**
- * Blank lines and comments directly after these diagram types confuse their indentation parsers.
- * The panel and exported HTML render the same normalization of the original source.
- */
+/** Blank lines and comments directly after these diagram types confuse their indentation parsers. */
 export const BLANK_LINES_AFTER_TYPE =
   /^((?:[^\S\n]*(?:%%[^\n]*)?\n)*?[^\S\n]*(?:mindmap|kanban|ishikawa(?:-beta)?)\b[^\n]*\n)(?:[^\S\n]*(?:%%(?!\{)[^\n]*)?\n)+/gi;
 

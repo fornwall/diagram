@@ -109,56 +109,11 @@ suite("panelState", () => {
       load({ ...state, userEdit: { ...userEdit, to: "flowchart TD" } }),
       state,
     );
-    // Charts were saved without the presentation that tells manual styling apart, which a
-    // refresh would discard, so the option is kept without the chart it was generated from.
+    // Charts were saved with what they were generated from, which is no longer used.
     const chartState = { ...state, language: "echarts", source: '{"series": []}' };
     const chart = { type: "pie", file: "sizes.tsv" };
-    assert.deepStrictEqual(load({ ...chartState, chart }), chartState);
     const chartPresentation = { baseline: {}, dataHash: "x", edits: [] };
-    assert.deepStrictEqual(load({ ...chartState, chart, chartPresentation }), {
-      ...chartState,
-      chart,
-      chartPresentation,
-    });
-  });
-
-  test("restores what is valid of a damaged state, and nothing when there is nothing to show", () => {
-    const { source: _, ...withoutSource } = { ...state, language: "echarts" };
-    for (const saved of [
-      "flowchart LR",
-      [state],
-      { ...state, title: 1 },
-      { ...state, language: "graphviz" },
-      { ...state, source: 1 },
-      // A chart saved without its option can only be drawn again from its file or command.
-      { ...withoutSource, chart: { type: "pie", data: "a,1" } },
-      { ...withoutSource, chart: { type: "cake", file: "a" } },
-    ]) {
-      assert.strictEqual(load(saved), undefined, JSON.stringify(saved));
-    }
-    assert.deepStrictEqual(
-      load({
-        ...state,
-        origin: "agent",
-        editedByUser: "yes",
-        error: 1,
-        clickPrompt: null,
-        links: { A: { file: "a.ts", line: "1" } },
-        document: { uri: "file:///a.md", fence: { openingLine: -1 } },
-        chart: { type: "pie", file: "sizes.tsv" },
-      }),
-      state,
-    );
-    const chart = { type: "pie", file: "sizes.tsv" };
-    // Edits of properties that capturing refuses, such as "__proto__", which assigning would
-    // set the prototype by rather than styling the chart.
-    for (const edits of [[{}], [{ path: [] }], [{ path: [{}] }], [{ path: ["__proto__", "x"] }]]) {
-      const chartPresentation = { baseline: {}, dataHash: "x", edits };
-      assert.deepStrictEqual(load({ ...withoutSource, chart, chartPresentation }), {
-        ...withoutSource,
-        chart,
-      });
-    }
+    assert.deepStrictEqual(load({ ...chartState, chart, chartPresentation }), chartState);
   });
 
   test("drops malformed saved document URIs without losing the diagram", () => {
@@ -197,49 +152,5 @@ suite("panelState", () => {
     }
     const links = { A: { file: "a.ts", line: 1, endLine: 9_999_999 } };
     assert.deepStrictEqual(load({ ...state, links }), { ...state, links });
-  });
-
-  test("a large chart of a file is saved without its option, unless edited by hand", async () => {
-    const saved: unknown[] = [];
-    const store = new StateStore(memento(async (value) => void saved.push(value)));
-    const chart: DiagramState = {
-      language: "echarts",
-      source: `{"series":[]}${" ".repeat(1_000_000)}`,
-      title: "Sizes",
-      chart: { type: "pie", file: "sizes.tsv" },
-      origin: "tool",
-      editedByUser: false,
-      error: "stale",
-    };
-    await store.save(chart, 1);
-    await store.save({ ...chart, editedByUser: true }, 1);
-    await store.save({ ...chart, chart: { type: "pie", data: "a,1" } }, 1);
-    assert.deepStrictEqual(
-      saved.map((value) => (value as DiagramState).source === undefined),
-      [true, false, false],
-    );
-    assert.strictEqual((saved[0] as DiagramState).error, undefined);
-  });
-
-  test("saves the source of a diagram that its document's block holds once", async () => {
-    const saved: unknown[] = [];
-    const store = new StateStore(memento(async (value) => void saved.push(value)));
-    const source = "flowchart LR\n  A --> B";
-    const fence = { language: "mermaid", source, openingLine: 2, lastLine: 4, prefix: "" } as const;
-    const document = { uri: "file:///a.md", fence };
-    await store.save({ ...state, source, document }, 1);
-    // An edit that the block does not hold yet.
-    const edited: DiagramState = { ...state, source: "flowchart TD", editedByUser: true, document };
-    await store.save(edited, 1);
-    const [once, twice] = saved as DiagramState[];
-    assert.strictEqual(once?.document?.fence.source, undefined);
-    assert.strictEqual(twice?.document?.fence.source, state.source);
-    assert.deepStrictEqual(load(once), { ...state, document });
-    assert.deepStrictEqual(load(twice), edited);
-    // Without the diagram's source either, the binding is left out.
-    const chart = { type: "pie", file: "a" };
-    const restored = load({ ...once, language: "echarts", source: undefined, chart });
-    assert.deepStrictEqual(restored?.chart, chart);
-    assert.strictEqual(restored?.document, undefined);
   });
 });

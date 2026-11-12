@@ -3,4 +3,3 @@ dist/
 out/
 .vscode-test
 *.vsix
-.claude/worktrees/

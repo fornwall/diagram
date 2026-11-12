@@ -1,13 +1,9 @@
 import * as assert from "node:assert";
 import * as vscode from "vscode";
-import { DraftTool } from "../draftTool";
 import { DIAGRAM_TYPES, describeError } from "../webview/mermaidErrors";
-import { MIN_FIT_TEXT } from "../webview/mermaidQuality";
 import { RELAYOUT_DELAY } from "../webview/mermaidRenderer";
-import { afterTest, replace } from "./afterTest";
-import { webviewTabs } from "./newPanel";
-import { invokeTool } from "./toolText";
-import { DRAG_IMAGE, MERMAID, suitePage, UNTIL } from "./webviewHarness";
+import { replace } from "./afterTest";
+import { MERMAID, SVG_IMAGE, suitePage, UNTIL } from "./webviewHarness";
 
 /**
  * Webview code defining `retheme(id)`, which changes the theme's id as a new theme does, taking
@@ -88,13 +84,13 @@ const IN_THEME = `
  * screen and in its image, where Mermaid draws them as SVG text, as the browser resolves them.
  */
 const LABEL_COLORS = `
-  ${DRAG_IMAGE}
+  ${SVG_IMAGE}
   const labelColors = async () => {
     const colors = (root, selector, property) => Object.fromEntries([...root.querySelectorAll(selector)]
       .filter((label) => label.textContent.trim())
       .map((label) => [label.textContent.trim(), getComputedStyle(label)[property]]));
     const host = document.createElement("div");
-    host.innerHTML = await dragImage();
+    host.innerHTML = await svgImage();
     document.body.append(host);
     try {
       return {screen: colors(document.querySelector("#diagram svg"), ".nodeLabel", "color"),
@@ -181,8 +177,8 @@ suite("Mermaid in the webview", function () {
           .filter(text => text.getAttribute("visibility") !== "hidden");
         const labels = shown(document.querySelector("#diagram svg"));
         const boxes = labels.map(text => text.getBoundingClientRect());
-        ${DRAG_IMAGE}
-        const image = await dragImage();
+        ${SVG_IMAGE}
+        const image = await svgImage();
         return {
           panel: labels.map(text => text.textContent),
           apart: boxes.every((box, i) => i === 0 || box.left > boxes[i - 1].right),
@@ -195,101 +191,6 @@ suite("Mermaid in the webview", function () {
       assert.strictEqual(new Set(dates.image).size, dates.image.length, dates.image.join());
     } finally {
       await evaluate(WIDEN);
-    }
-  });
-
-  test("fits a diagram drawn in a hidden tab, and lays out a Gantt chart, once the tab is shown", async () => {
-    const [tab] = await webviewTabs((labels) => labels.length === 1);
-    const column = tab?.group.viewColumn;
-    assert.ok(column);
-    const steps = Array.from({ length: 12 }, (_, step) => `S${step}[Step ${step}]`).join(" --> ");
-    const sources = [`flowchart LR\n  ${steps}`, MERMAID.gantt];
-    // The page can hear that the tab is shown before it has the tab's size, as under load.
-    const cases = sources.flatMap((source) => [false, true].map((early) => ({ source, early })));
-    for (const [index, { source, early }] of cases.entries()) {
-      const gantt = source === MERMAID.gantt;
-      await draw({ source: "flowchart LR\n  A --> B" });
-      await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(), column);
-      try {
-        // As when the page loads again in the background, so that nothing shows the tab.
-        await evaluate(`(async () => {
-          ${UNTIL}
-          await until(() => innerWidth === 300, "the size of a hidden tab");
-          const requestId = ${1_000_000 + index};
-          receive({type: "render", requestId, language: "mermaid", source: ${JSON.stringify(source)}, title: "Hidden"});
-          await until(() => testRenderResults.includes(requestId), "the diagram drawn");
-          if (${early}) receive({type: "tabVisibility", hidden: false});
-        })()`);
-      } finally {
-        page.panel.show(true);
-      }
-      const shown = await evaluate(`(async () => {
-        ${UNTIL}
-        const canvas = document.getElementById("canvas");
-        const style = getComputedStyle(canvas);
-        const room = () => canvas.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
-        await until(() => innerWidth !== 300, "the size of the shown tab");
-        const svg = () => document.querySelector("#diagram svg");
-        // The width that fitting shows the drawing at: no narrower than shows its 16 px text at
-        // the least size that reads.
-        const fitted = (laidOut) => Math.max(Math.round(room()), Math.round((laidOut * ${MIN_FIT_TEXT}) / 16));
-        const drawn = () => ({
-          laidOut: Math.round(svg().viewBox.baseVal.width),
-          width: Math.round(svg().width.baseVal.value),
-          room: Math.round(room()),
-          fitted: fitted(svg().viewBox.baseVal.width),
-        });
-        // Fitted, or for a Gantt chart laid out, for the shown tab.
-        await until(() => {
-          const { laidOut, width, room, fitted } = drawn();
-          return ${gantt} ? laidOut === room : Math.abs(width - fitted) <= 1;
-        }, "the diagram fitted", nextFrame).catch(() => {});
-        return drawn();
-      })()`);
-      const { laidOut, width, room, fitted } = shown as Record<string, number>;
-      const message = JSON.stringify({ ...(shown as object), early });
-      if (gantt) assert.strictEqual(laidOut, room, message);
-      else assert.ok(Math.abs((width as number) - (fitted as number)) <= 1, message);
-    }
-  });
-
-  test("draws Gantt charts at the width of the canvas they are shown in", async () => {
-    // The view that the tests share.
-    afterTest(() => evaluate('document.getElementById("view-visual").click()'));
-    for (const view of ["split", "visual", "source"]) {
-      if (view === "source") {
-        // A chart drawn in the Source view takes the width of the Visual view, where the last one
-        // was drawn, also after a draft is drawn wider meanwhile, as it is in the Source view.
-        await evaluate('document.getElementById("view-source").click()');
-        assert.strictEqual(
-          await invokeTool(new DraftTool(page.panel), {
-            action: "validate",
-            source: MERMAID.gantt.replace("7d", "9d"),
-            revision: page.panel.revision,
-          }).then((text) => JSON.parse(text).valid),
-          true,
-        );
-        await draw({ source: MERMAID.gantt });
-        // The canvas fits the drawing in the frame after the one in which it sees its new size.
-        await evaluate(`(async () => {
-          document.getElementById("view-visual").click();
-          for (let frame = 0; frame < 3; frame++) await new Promise(requestAnimationFrame);
-        })()`);
-      } else {
-        await evaluate(`document.getElementById("view-${view}").click()`);
-        await draw({ source: MERMAID.gantt });
-      }
-      const { drawn, room, zoom } = (await evaluate(`(() => {
-        const canvas = document.getElementById("canvas");
-        const style = getComputedStyle(canvas);
-        return {
-          drawn: document.querySelector("#diagram svg").viewBox.baseVal.width,
-          room: canvas.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight),
-          zoom: document.getElementById("zoom-reset").textContent,
-        };
-      })()`)) as { drawn: number; room: number; zoom: string };
-      assert.ok(Math.abs(drawn - room) < 1, `${view}: drawn ${drawn} wide in ${room}`);
-      assert.strictEqual(zoom, "100%", view);
     }
   });
 
@@ -562,8 +463,8 @@ suite("Mermaid in the webview", function () {
         const clipped = Array.from(svg.querySelectorAll("text"), text => text.getBoundingClientRect())
           .filter(text => text.width && (text.left < drawing.left - 1 || text.right > drawing.right + 1
             || text.top < drawing.top - 1 || text.bottom > drawing.bottom + 1)).length;
-        ${DRAG_IMAGE}
-        const image = await dragImage();
+        ${SVG_IMAGE}
+        const image = await svgImage();
         const exported = new DOMParser().parseFromString(image, "image/svg+xml").documentElement;
         return {clipped, viewBox: svg.getAttribute("viewBox") === exported.getAttribute("viewBox")};
       })()`)) as { clipped: number; viewBox: boolean };
@@ -2114,12 +2015,11 @@ suite("Mermaid sources from a model or an untrusted repository", function () {
     return opened;
   }
 
-  test("opens a node's link on a plain click or Enter, and selects or picks on other clicks", async () => {
+  test("opens a node's link on a plain click or Enter, and selects on other clicks", async () => {
     const source = `flowchart LR\n  A[Docs] --> B["Mail <a href='mailto:docs@example.com'>us</a>"] --> C\n  click A href "https://example.com/docs?page=2" "Read the docs" _blank`;
     await draw({ source, title: "Links" });
     const opened = recordOpened();
-    const shown = await evaluate(`(async () => {
-      ${UNTIL}
+    const shown = await evaluate(`(() => {
       const node = id => document.querySelector('#diagram [data-diagram-id="' + id + '"][tabindex]');
       const click = (element, init) =>
         element.dispatchEvent(new MouseEvent("click", {bubbles: true, ...init}));
@@ -2131,10 +2031,6 @@ suite("Mermaid sources from a model or an untrusted repository", function () {
       click(node("B").querySelector("a"), {ctrlKey: true});
       shown.selected = [...document.querySelectorAll("#diagram .diagram-selected[tabindex]")]
         .map(element => element.getAttribute("data-diagram-id"));
-      receive({type: "startPick", pickId: 90001, prompt: "Pick a node", multiple: false});
-      await until(() => !document.getElementById("pick").hidden, "the pick");
-      click(node("A"));
-      shown.picked = document.getElementById("pick").hidden;
       click(node("A"));
       node("A").dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true}));
       click(node("B").querySelector("a"));
@@ -2146,7 +2042,6 @@ suite("Mermaid sources from a model or an untrusted repository", function () {
       tooltips: ["Open https://example.com/docs?page=2", "Open mailto:docs@example.com", null],
       hint: "",
       selected: ["A", "B"],
-      picked: true,
     });
     assert.deepStrictEqual(opened, [
       "https://example.com/docs?page=2",
@@ -2360,29 +2255,6 @@ suite("Mermaid sources from a model or an untrusted repository", function () {
     );
   });
 
-  test("keeps an actor's menu open while a draft is drawn, which zooms a drawing of its own", async () => {
-    await draw({ source: actorLinks, title: "Draft" });
-    const open = 'document.querySelector("#canvas .link-menu")?.contains(document.activeElement)';
-    assert.strictEqual(
-      await evaluate(`(() => {
-        const bob = document.querySelector('#diagram [data-diagram-id="Bob"][tabindex]');
-        bob.focus();
-        bob.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true}));
-        return ${open};
-      })()`),
-      true,
-    );
-    // Wider than the panel, which the draft's drawing is zoomed out to fit.
-    const nodes = Array.from({ length: 30 }, (_, i) => `N${i}[Node number ${i}]`);
-    const report = await invokeTool(new DraftTool(page.panel), {
-      action: "validate",
-      source: `flowchart LR\n  ${nodes.join(" --> ")}`,
-      revision: page.panel.revision,
-    });
-    assert.strictEqual(JSON.parse(report).valid, true, report);
-    assert.strictEqual(await evaluate(open), true);
-  });
-
   test("closes an actor's menu when the canvas is resized, which moves the actor", async () => {
     // Short enough to draw at its actual size, which a resize keeps.
     const source =
@@ -2481,8 +2353,8 @@ suite("Mermaid sources from a model or an untrusted repository", function () {
     test(`leaves links out of images of ${name}`, async () => {
       await draw({ source, title: "Links" });
       const svg = await evaluate(`(async () => {
-        ${DRAG_IMAGE}
-        return await dragImage();
+        ${SVG_IMAGE}
+        return await svgImage();
       })()`);
       assert.ok(typeof svg === "string" && /Docs|Wiki/.test(svg));
       assert.doesNotMatch(svg, /example\.com|href/);

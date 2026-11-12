@@ -1,12 +1,10 @@
 import * as assert from "node:assert";
 import * as vscode from "vscode";
 import { validateAnnotation } from "../annotations";
-import { buildChart } from "../charts";
-import { parseTable } from "../data";
 import { SETTLE_DELAY } from "../webview/echartsRenderer";
-import { afterTest, cancellationSource, recordMessages, replace } from "./afterTest";
+import { afterTest, recordMessages, replace } from "./afterTest";
 import { within } from "./newPanel";
-import { DRAG_IMAGE, suitePage, UNTIL } from "./webviewHarness";
+import { SVG_IMAGE, suitePage, UNTIL } from "./webviewHarness";
 
 /**
  * A chart that counts its draws in `window.chartDraws`: how often each task that drew it did so,
@@ -417,10 +415,7 @@ suite("ECharts in the webview", function () {
       })()`),
       "Selected: “A”",
     );
-    assert.match(
-      page.panel.describeForModel() ?? "",
-      /selected these chart items in the panel: "A" \(id: "A \(item 3\)"\)/,
-    );
+    assert.match(page.panel.describeForModel() ?? "", /has selected: "A" \(id: "A \(item 3\)"\)/);
     const ambiguous = page.panel.annotate({ marks: [{ id: "A", kind: "info" }], dim: false });
     assert.ok(ambiguous.ok);
     assert.deepStrictEqual(ambiguous.repeated, [
@@ -689,58 +684,6 @@ suite("ECharts in the webview", function () {
     });
   });
 
-  test("scrolls facets in a view too short for them, keeping the scroll of a revision", async () => {
-    const data = `service,ms\n${Array.from({ length: 12 }, (_, i) => `s${i},${i + 1}`).join("\n")}`;
-    const spec = { type: "bar", data, facetColumn: "service" } as const;
-    const faceted = JSON.stringify(buildChart(spec, parseTable(data)).option);
-    const plain = JSON.stringify(buildChart({ type: "bar", data }, parseTable(data)).option);
-    const shown = () =>
-      evaluate(`(async () => {
-        ${UNTIL}
-        const chart = document.getElementById("chart");
-        const drawing = document.getElementById("chart-drawing");
-        // Once the chart is drawn at the size of its drawing, which may be taller than the view.
-        await until(() => {
-          const svg = chart.querySelector("svg");
-          return svg && svg.getAttribute("width") === String(chart.clientWidth) &&
-            svg.getAttribute("height") === String(drawing.clientHeight);
-        }, "the chart to be drawn for its container", nextFrame);
-        await nextFrame();
-        return {scrolls: chart.classList.contains("scrolls"), top: chart.scrollTop,
-          taller: chart.scrollHeight > chart.clientHeight,
-          wider: chart.scrollWidth > chart.clientWidth};
-      })()`);
-    const resize = (height: string) =>
-      evaluate(`document.getElementById("canvas").style.height = "${height}"`);
-    try {
-      await draw({ language: "echarts", source: faceted });
-      assert.deepStrictEqual(await shown(), {
-        scrolls: false,
-        top: 0,
-        taller: false,
-        wider: false,
-      });
-      await resize("140px");
-      assert.deepStrictEqual(await shown(), { scrolls: true, top: 0, taller: true, wider: false });
-      await evaluate('document.getElementById("chart").scrollTop = 40');
-      await draw({ language: "echarts", source: faceted });
-      assert.deepStrictEqual(await shown(), { scrolls: true, top: 40, taller: true, wider: false });
-      // Another chart, by its title, shows from its top.
-      await draw({ language: "echarts", source: faceted, title: "Another" });
-      assert.deepStrictEqual(await shown(), { scrolls: true, top: 0, taller: true, wider: false });
-      // Other charts fit the view, however short.
-      await draw({ language: "echarts", source: plain });
-      assert.deepStrictEqual(await shown(), {
-        scrolls: false,
-        top: 0,
-        taller: false,
-        wider: false,
-      });
-    } finally {
-      await resize("");
-    }
-  });
-
   test("renders custom shapes without a coordinate system", async () => {
     assert.deepStrictEqual(
       await render({
@@ -896,7 +839,7 @@ suite("ECharts in the webview", function () {
       await evaluate(`(async () => {
         ${CHART_FITTED}
         ${ROTATED}
-        ${DRAG_IMAGE}
+        ${SVG_IMAGE}
         const canvas = document.getElementById("canvas");
         await chartFitted();
         await settled();
@@ -909,7 +852,7 @@ suite("ECharts in the webview", function () {
           // for, ends the wait: the next size is again laid out at once.
           Object.assign(canvas.style, {width: "600px", flex: "none"});
           await chartFitted();
-          await dragImage();
+          await svgImage();
           canvas.style.width = "250px";
           return await rotatesAtOnce();
         } finally {
@@ -2003,60 +1946,6 @@ suite("ECharts in the webview", function () {
         "X: 1, 1 of 2",
       ],
     );
-  });
-
-  test("picks a chart item with the keyboard", async () => {
-    await renderChart(SALES);
-    const picking = page.panel.pickNodes("Pick a day", false, cancellationSource().token);
-    await evaluate(`(async () => {
-      ${PRESS}
-      ${UNTIL}
-      await until(() => !document.getElementById("pick").hidden, "the pick prompt");
-      press("Home");
-      press("ArrowRight");
-      press("Enter");
-    })()`);
-    assert.deepStrictEqual(await picking, {
-      picked: true,
-      nodes: [{ id: "A/Tue", label: "Tue" }],
-    });
-  });
-
-  test("gives the keys to the chart, not the canvas, on a pick and after it or Clear", async () => {
-    await renderChart(SALES);
-    const picking = page.panel.pickNodes("Pick days", true, cancellationSource().token);
-    const focus = await evaluate(`(async () => {
-      ${PRESS}
-      ${UNTIL}
-      // VS Code, revealing the panel for the pick, may take the focus out of the page meanwhile.
-      await until(() => !document.getElementById("pick").hidden && document.activeElement === chart,
-        "the pick prompt, with the focus on the chart");
-      const canvas = document.getElementById("canvas");
-      const focus = () => [document.activeElement === chart, chart.getAttribute("aria-describedby")];
-      // As VS Code focuses the panel: the focus leaves the page, and comes back to the page alone.
-      chart.blur();
-      window.dispatchEvent(new FocusEvent("focus"));
-      const picking = focus();
-      press("Home");
-      press("Enter");
-      const done = document.getElementById("pick-done");
-      done.focus();
-      done.click();
-      const picked = focus();
-      press("Enter");
-      const clear = document.getElementById("clear-selection");
-      clear.focus();
-      clear.click();
-      return {canvas: [canvas.tabIndex, canvas.getAttribute("aria-label")], picking, picked,
-        cleared: focus()};
-    })()`);
-    assert.deepStrictEqual(await picking, { picked: true, nodes: [{ id: "A/Mon", label: "Mon" }] });
-    assert.deepStrictEqual(focus, {
-      canvas: [-1, "Chart preview"],
-      picking: [true, "pick-prompt chart-drawing"],
-      picked: [true, "chart-drawing"],
-      cleared: [true, "chart-drawing"],
-    });
   });
 
   test("keeps the focus on a chart item through a theme change and a new rendering", async () => {

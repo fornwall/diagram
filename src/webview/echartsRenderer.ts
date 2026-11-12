@@ -2,7 +2,7 @@
 // VS Code theme. Charts draw as SVG; see src/webview/echartsLibrary.ts for why.
 
 import type * as ECharts from "echarts/core";
-import { type Annotation, type DiagramNode, errorMessage, type RepeatedName } from "../protocol";
+import { type Annotation, errorMessage, type RepeatedName } from "../protocol";
 import type { ThemeColors } from "./colors";
 import { toolWarnings } from "./echartsAround";
 import { capWarnings, dataWarnings, itemCount, layoutWarnings } from "./echartsChecks";
@@ -49,6 +49,7 @@ import {
   textSize,
   withTextIn,
 } from "./svgImage";
+import { readThemeColors } from "./vscodeTheme";
 
 /** How long the size of a chart stays the same before it is laid out for it, rather than resized. */
 export const SETTLE_DELAY = 150;
@@ -146,13 +147,11 @@ export class EChartsRenderer implements Renderer {
   constructor(
     private readonly itemClicked: ItemClickHandler,
     private readonly canvas: HTMLElement,
-    /** The colors to draw in: the VS Code theme in the panel, the saved ones in a saved chart. */
-    private readonly readColors: () => ThemeColors,
     /**
      * Whether the tab is hidden behind another. Its page then has the size of an empty frame, 300
      * by 150 pixels, which a chart is not laid out for.
      */
-    private readonly tabHidden: () => boolean = () => false,
+    private readonly tabHidden: () => boolean,
   ) {
     this.container = document.createElement("div");
     this.container.id = "chart";
@@ -256,10 +255,6 @@ export class EChartsRenderer implements Renderer {
 
   repeatedNames(): RepeatedName[] {
     return this.items()?.repeatedNames() ?? [];
-  }
-
-  eachItem(visit: (node: DiagramNode) => void, includeData = false): void {
-    this.items()?.each(visit, includeData);
   }
 
   hitsOf(ids: readonly string[]): Hit[] {
@@ -611,7 +606,7 @@ export class EChartsRenderer implements Renderer {
     }
     const themeChanged = !this.theme && this.chart !== undefined;
     if (!this.theme) {
-      const colors = this.readColors();
+      const colors = readThemeColors();
       this.theme = { colors, echarts: buildEChartsTheme(colors) };
     }
     const context = {

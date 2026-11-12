@@ -2,17 +2,14 @@ import * as assert from "node:assert";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as vscode from "vscode";
-import { ChartTool, UpdateChartTool } from "../chartTools";
-import { withoutValueRuns } from "../describe";
 import { EditDiagramTool } from "../editTool";
 import { findDiagramFences } from "../fences";
 import type { DiagramPanel, Drawn } from "../panel";
 import { applySourceEdits, errorContext, type SourceEdit } from "../sourceEdits";
-import { StyleDiagramTool } from "../styleTool";
 import { lineAndColumn } from "../text";
 import { RenderDiagramTool } from "../tools";
 import { afterTest, assertLinearTime, recordMessages, tempDir } from "./afterTest";
-import { type FakeWebview, newFakePanel, newPanel } from "./newPanel";
+import { type FakeWebview, newFakePanel } from "./newPanel";
 import { invokeTool } from "./toolText";
 import { suitePage, UNTIL } from "./webviewHarness";
 
@@ -68,39 +65,6 @@ suite("source edits", () => {
       source: "$&$&a",
       replaced: [2],
     });
-  });
-
-  test("quote the closest lines of text that is not in the source", () => {
-    assert.deepStrictEqual(problems(source, [edit("B --> C[Don]", "")]), [
-      "Edit 1: oldText is not in the source. The closest lines are:\n2:   A[Parser] --> B[Checker]\n3:   B --> C[Done]\n4:   B --> D[Retry]",
-    ]);
-    assert.deepStrictEqual(problems(source, [edit("A[Parser] --> B[Checker]\nB --> C", "")]), [
-      "Edit 1: oldText is not in the source. It differs from lines 2-3 only in whitespace, such as indentation or line breaks, which must match exactly:\n2:   A[Parser] --> B[Checker]\n3:   B --> C[Done]",
-    ]);
-    assert.match(
-      problems(source, [edit("3:   B --> C[Done]", "")])[0] ?? "",
-      /Leave out the line numbers, such as "12: "/,
-    );
-    assert.match(
-      problems(source, [edit("B --> C[Done]\\n  B --> D", "")])[0] ?? "",
-      /line breaks are written as "\\n"/,
-    );
-    assert.deepStrictEqual(problems(source, [edit("%%", "")]), [
-      "Edit 1: oldText is not in the source. ",
-    ]);
-    // Or copy the line that stands for the values left out of a long option shown to it.
-    const option = `{\n  "series": [{\n    "data": [\n${"      1, 2, 3,\n".repeat(20)}      4\n    ]\n  }]\n}`;
-    const shown = withoutValueRuns(option) ?? "";
-    const marker = /^ *… 19 more lines of values …$/m.exec(shown)?.[0];
-    assert.ok(marker, shown);
-    assert.deepStrictEqual(
-      problems(option, [
-        edit(`      1, 2, 3,\n${marker}\n    ]\n  }]`, '    ],\n  "type": "bar"}]'),
-      ]),
-      [
-        'Edit 1: oldText is not in the source. Its line "… 19 more lines of values …" stands for lines left out of the source as it was shown to you: make the edit without that line, with text before or after it.',
-      ],
-    );
   });
 
   test("locate whitespace-only differences in the original lines", () => {
@@ -247,7 +211,7 @@ suite("diagram_edit", function () {
     assert.strictEqual(tool.prepareInvocation().invocationMessage, "Editing the diagram");
     assert.strictEqual(
       await editing({ edits: [{ oldText: "A", newText: "B" }] }),
-      "Nothing was changed: There is no diagram to edit. Render one with diagram_render or diagram_chart first. Revision: 0.",
+      "There is no diagram to edit. Render one with diagram_render first.",
     );
     await draw();
     assert.strictEqual(tool.prepareInvocation().invocationMessage, 'Editing the diagram "Flow"');
@@ -258,26 +222,19 @@ suite("diagram_edit", function () {
           { oldText: "", newText: "B" },
         ],
       }),
-      `Nothing was changed, as the input is invalid. Fix it and call diagram_edit again. Revision: ${panel.revision}.\n\nInvalid input:\n- Edit 1: Unknown property "old"; the properties are "oldText", "newText", "replaceAll".\n- Edit 2: "oldText" must be the exact text to replace, as a non-empty string. To add lines, replace a line next to where they go with that line and them.`,
+      'Nothing was changed: Edit 1 needs a non-empty "oldText" and a "newText" string.',
     );
-    assert.match(await editing({}), /Give "edits"/);
-    assert.match(await editing({ edits: [], titel: "X" }), /Unknown property "titel"/);
   });
 
-  test("replaces exact text, keeping the title, click prompt and code links, and says what changed", async () => {
+  test("replaces exact text, keeping the title, click prompt and code links", async () => {
     await draw({ clickPrompt: "Explain {label}", links: { A: { file: "sizes.tsv", line: 1 } } });
-    const revision = panel.revision;
     const result = await editing({
       // As a JSON string, as some models send arrays.
       edits: JSON.stringify([
         { oldText: "--> B[Checker]", newText: "--> C[Cache] --> B[Checker]" },
       ]),
-      revision,
     });
-    assert.strictEqual(
-      result,
-      `Edited the flowchart-v2 diagram with 1 edit, in line 2 of 2. Nodes added: "C".\n\nRevision: ${revision + 1}.`,
-    );
+    assert.strictEqual(result, "Edited the flowchart-v2 diagram.");
     assert.strictEqual(
       panel.current?.source,
       "flowchart LR\n  A[Parser] --> C[Cache] --> B[Checker]",
@@ -288,15 +245,6 @@ suite("diagram_edit", function () {
     assert.strictEqual(panel.current?.origin, "tool");
     assert.deepStrictEqual(webview.render.links, { A: "sizes.tsv#L1" });
     assert.strictEqual(webview.render.clickPrompt, "Explain {label}");
-
-    assert.match(
-      await editing({ edits: [{ oldText: "C[Cache] --> ", newText: "" }] }),
-      /^Edited the flowchart-v2 diagram with 1 edit, in line 2 of 2\. Nodes removed: "C"\.\n\nRevision: \d+\.$/,
-    );
-    assert.match(
-      await editing({ edits: [{ oldText: "A[Parser]", newText: "A[Parser]" }] }),
-      /^Nothing was changed, as the edits leave the diagram as it is\. Revision: \d+\.$/,
-    );
   });
 
   test("changes nothing when an edit does not apply, quoting the closest lines", async () => {
@@ -310,7 +258,7 @@ suite("diagram_edit", function () {
           { oldText: "B[Checkr]", newText: "B[Typer]" },
         ],
       }),
-      `Nothing was changed, as 1 of 2 edits does not apply. Send them all again, with it corrected. Revision: ${revision}.\n\nEdit 2: oldText is not in the source, as the edits before it left it. The closest lines are:\n1: flowchart LR\n2:   A[Lexer] --> B[Checker]`,
+      "Nothing was changed:\n\nEdit 2: oldText is not in the source, as the edits before it left it. The closest lines are:\n1: flowchart LR\n2:   A[Lexer] --> B[Checker]",
     );
     assert.match(
       await editing({
@@ -319,29 +267,11 @@ suite("diagram_edit", function () {
           { oldText: "]", newText: "]" },
         ],
       }),
-      /^Nothing was changed, as 1 of 2 edits does not apply\.[\s\S]*Edit 2: oldText occurs 2 times, on line 2\./,
+      /^Nothing was changed:[\s\S]*Edit 2: oldText occurs 2 times, on line 2\./,
     );
     assert.strictEqual(panel.current?.source, flow);
     assert.strictEqual(panel.revision, revision);
     assert.strictEqual(renders(), sent);
-  });
-
-  test("refuses edits of a revision that is not the current one", async () => {
-    await draw();
-    const revision = panel.revision;
-    await webview.edit(`${flow}\n  B --> D`);
-    assert.strictEqual(
-      await editing({ edits: [{ oldText: "B[Checker]", newText: "B[Typer]" }], revision }),
-      `Nothing was changed: The diagram changed since revision ${revision}. Read diagram_getState and make the edits to its current source. Revision: ${panel.revision}.`,
-    );
-    // The user's edit stays, and is still theirs after an agent's edit of it.
-    assert.match(
-      await editing({ edits: [{ oldText: "B[Checker]", newText: "B[Typer]" }] }),
-      /^Edited/,
-    );
-    assert.strictEqual(panel.current?.source, "flowchart LR\n  A[Parser] --> B[Typer]\n  B --> D");
-    assert.strictEqual(panel.current?.editedByUser, true);
-    assert.match(panel.describeForModel() ?? "", /The user edited this source/);
   });
 
   test("adds, moves and removes code links, and names those of nodes it no longer has", async () => {
@@ -349,7 +279,7 @@ suite("diagram_edit", function () {
     const removed = await editing({ edits: [{ oldText: "A[Parser]", newText: "P[Parser]" }] });
     assert.match(
       removed,
-      /^Edited the flowchart-v2 diagram with 1 edit, in line 2 of 2\. Nodes added: "P"\. Nodes removed: "A"\.\n\nThese links name nodes the diagram does not have, so nothing opens from them: "A"\. Its node ids are "P", "B"\. Correct them with "links" in diagram_edit, e\.g\. \{"newId": "src\/file\.ts#L3", "oldId": null\}\.\n\nRevision: \d+\.$/,
+      /^Edited the flowchart-v2 diagram\.\n\nThese links name nodes the diagram does not have: "A"\. Its node ids are "P", "B"\.$/,
     );
     assert.deepStrictEqual(Object.keys(panel.current?.links ?? {}), ["A", "B"]);
 
@@ -357,30 +287,23 @@ suite("diagram_edit", function () {
       edits: [],
       links: { A: null, P: "sizes.tsv#L3", Q: "made-up.ts", R: "sizes.tsv:4" },
     });
-    assert.match(moved, /^Updated the flowchart-v2 diagram\. Its code links are on "B", "P"\./);
     assert.match(
       moved,
-      /These links were left out:\n- "R": "sizes\.tsv:4" gives its line after a colon; .*\n- "Q": made-up\.ts does not exist\.\n.*Correct them with "links" in diagram_edit\.\n\nRevision: \d+\.$/,
+      /^Edited the flowchart-v2 diagram\.\n\nThese links were left out:\n- "R": "sizes\.tsv:4" gives its line after a colon; .*\n- "Q": made-up\.ts does not exist\.\n/,
     );
     assert.deepStrictEqual(panel.current?.links, {
       B: { file: "sizes.tsv", line: 2 },
       P: { file: "sizes.tsv", line: 3 },
     });
     assert.deepStrictEqual(webview.render.links, { B: "sizes.tsv#L2", P: "sizes.tsv#L3" });
-    assert.match(
-      await editing({ edits: [], links: { B: null, P: null } }),
-      /It has no code links any more\./,
-    );
+    await editing({ edits: [], links: { B: null, P: null } });
     assert.strictEqual(panel.current?.links, undefined);
   });
 
   test("takes a title, which otherwise follows the source if it was taken from it", async () => {
     const titled = "---\ntitle: Pipeline\n---\nflowchart LR\n  A --> B";
     await draw({ source: titled, title: "Pipeline" });
-    assert.match(
-      await editing({ edits: [{ oldText: "Pipeline", newText: "Stages" }] }),
-      /It is titled "Stages"\./,
-    );
+    await editing({ edits: [{ oldText: "Pipeline", newText: "Stages" }] });
     assert.strictEqual(panel.current?.title, "Stages");
     await editing({ edits: [], title: "Build" });
     assert.strictEqual(panel.current?.title, "Build");
@@ -388,45 +311,18 @@ suite("diagram_edit", function () {
     assert.strictEqual(panel.current?.title, "Build");
   });
 
-  test("forgets the user's changes to the source once an agent changes it, saving the source once", async () => {
-    const values = new Map<string, unknown>();
-    ({ panel, webview } = await newFakePanel(values));
-    drawMermaid(webview);
-    const saved = () => values.get("diagram.state") as Record<string, unknown>;
-    await draw();
-    const edited = `${flow}\n  B --> C[Done]`;
-    await webview.edit(edited);
-    assert.deepStrictEqual(panel.current?.userEdit, { from: flow, to: edited });
-    // The user's edit is the source, which is saved once.
-    assert.strictEqual(saved().source, edited);
-    assert.deepStrictEqual(saved().userEdit, { from: flow });
-    // A title leaves the source as the user changed it.
-    await editing({ edits: [], title: "Pipeline" });
-    assert.deepStrictEqual(panel.current?.userEdit, { from: flow, to: edited });
-    await editing({ edits: [{ oldText: "C[Done]", newText: "C[Finished]" }] });
-    assert.strictEqual(panel.current?.userEdit, undefined);
-    assert.strictEqual(saved().userEdit, undefined);
-    // As does coloring it.
-    await webview.edit(`${panel.current?.source}\n  C --> A`);
-    assert.ok(panel.current?.userEdit);
-    await invokeTool(new StyleDiagramTool(panel), { styles: [{ id: "A", fill: "green" }] });
-    assert.match(panel.current?.source ?? "", /style A fill:green/);
-    assert.strictEqual(panel.current?.userEdit, undefined);
-    assert.strictEqual(saved().userEdit, undefined);
-  });
-
   test("keeps a failed edit shown with its error and the lines around it, for the next edit to fix", async () => {
     await draw({ source: `${flow}\n  B --> C\n  C --> D`, links: { A: { file: "sizes.tsv" } } });
     const failed = await editing({ edits: [{ oldText: "B --> C", newText: "B -->--> C" }] });
     assert.strictEqual(
       failed,
-      `The edited diagram failed to render with this error:\n\nParse error on line 3, column 5: unexpected "-->".\n\nLines 1-4 of the source:\n1: flowchart LR\n2:   A[Parser] --> B[Checker]\n3:   B -->--> C\n4:   C --> D\n\nThe panel shows it with this error. Fix it with diagram_edit.\n\nRevision: ${panel.revision}.`,
+      'The diagram fails to render:\n\nParse error on line 3, column 5: unexpected "-->".\n\nLines 1-4 of the source:\n1: flowchart LR\n2:   A[Parser] --> B[Checker]\n3:   B -->--> C\n4:   C --> D\n\nThe panel shows the error. Fix it with diagram_edit or diagram_render.',
     );
     assert.match(panel.current?.error ?? "", /Parse error on line 3/);
     assert.match(panel.current?.source ?? "", /B -->--> C/);
     assert.match(
       await editing({ edits: [{ oldText: "-->-->", newText: "-->" }] }),
-      /^Edited the flowchart-v2 diagram with 1 edit, in line 3 of 4\.\n\nRevision/,
+      /^Edited the flowchart-v2 diagram\.$/,
     );
     assert.strictEqual(panel.current?.error, undefined);
     assert.deepStrictEqual(panel.current?.links, { A: { file: "sizes.tsv" } });
@@ -447,7 +343,7 @@ suite("diagram_edit", function () {
     assert.match(await editing({ edits: [{ oldText: "\n  B --> C", newText: "" }] }), /^Edited/);
     assert.deepStrictEqual(webview.render.selection, ["A"]);
     const described = panel.describeForModel() ?? "";
-    assert.match(described, /Marked nodes: "A" \(info\)\./);
+    assert.match(described, /Marked: "A" \(info\)\./);
     const marks = webview.sent.findLast((message) => message.type === "annotate");
     assert.deepStrictEqual(marks?.type === "annotate" && marks.marks.map(({ id }) => id), ["A"]);
   });
@@ -470,10 +366,7 @@ suite("diagram_edit", function () {
     );
     assert.ok(opened.ok);
     const result = await editing({ edits: [{ oldText: "B[Checker]", newText: "B[Typer]" }] });
-    assert.match(
-      result,
-      /^Edited .*\n\nThe diagram was opened from a code block in notes\.md\. The change is in the panel only, until the user writes it to that file with Apply or Write to\.\n\nRevision: \d+\.$/,
-    );
+    assert.match(result, /^Edited the flowchart-v2 diagram\.$/);
     assert.strictEqual(document.getText(), markdown);
     assert.strictEqual(panel.current?.document?.replaced, true);
     const details: unknown[] = [];
@@ -489,87 +382,6 @@ suite("diagram_edit", function () {
     assert.strictEqual(document.getText(), markdown);
   });
 
-  test("edits a chart's styling as the user's own edit, which chart updates keep", async () => {
-    webview.answer = (message) =>
-      message.type === "render"
-        ? { type: "rendered", requestId: message.requestId, diagramType: "bar" }
-        : undefined;
-    const chart = { type: "bar", data: "name,amount\na,1\nb,2\nc,3" };
-    assert.match(await invokeTool(new ChartTool(panel), chart), /^Rendered the bar chart/);
-    const source = panel.current?.source ?? "";
-    // The end of the option, which no nested object shares, as they are indented.
-    const styled = await editing({
-      edits: [{ oldText: "\n}", newText: ',\n  "backgroundColor": "#123456"\n}' }],
-    });
-    assert.match(
-      styled,
-      /^Edited the bar chart with 1 edit, in lines \d+-\d+ of \d+\. As an edit of its styling, it stays when diagram_updateChart or Refresh rebuilds the chart\.\n\nRevision: \d+\.$/,
-    );
-    assert.deepStrictEqual(panel.current?.chartPresentation?.edits, [
-      { path: ["backgroundColor"], value: "#123456" },
-    ]);
-    assert.match(
-      await invokeTool(new UpdateChartTool(panel), { type: "line" }),
-      /^Updated the bar chart/,
-    );
-    assert.strictEqual(JSON.parse(panel.current?.source ?? "").backgroundColor, "#123456");
-    assert.strictEqual(JSON.parse(panel.current?.source ?? "").series[0].type, "line");
-
-    const before = panel.current;
-    const structural = await editing({
-      edits: [{ oldText: '"type": "line"', newText: '"type": "bar"' }],
-    });
-    assert.match(
-      structural,
-      /^Nothing was changed, as the source changes the chart's data or structure: Refresh and diagram_updateChart rebuild this chart from its data, keeping only edits of its styling\. Change its type, columns, grouping, sort, limit or filters with diagram_updateChart, and its data with diagram_chart\. To draw what they cannot, write the whole option with diagram_render\. Revision: \d+\.$/,
-    );
-    const invalid = await editing({
-      edits: [{ oldText: '"backgroundColor": "#123456"', newText: '"backgroundColor": #123456' }],
-    });
-    assert.match(
-      invalid,
-      /^Nothing was changed, as a chart made by diagram_chart must stay JSON, for Refresh and diagram_updateChart to rebuild it, and the edited option is not JSON: Unexpected token '#'\. Revision: \d+\.\n\nLines \d+-\d+ of the source, where it changed:\n(?:\d+: .*\n)*\d+: {3}"backgroundColor": #123456\n[\s\S]*Correct the edits\. For callbacks, write the whole option with diagram_render\.$/,
-    );
-    assert.match(
-      await editing({
-        edits: [{ oldText: '"#123456"', newText: '"#123456" "color": ["red"]' }],
-      }),
-      /the edited option is not JSON: Expected ',' or '\}' after property value in JSON at position \d+ \(line \d+ column \d+\)\. Revision: \d+\.\n\nLines \d+-\d+ of the edited option:\n[\s\S]*\n\d+: {3}"backgroundColor": "#123456" "color": \["red"\]\n/,
-    );
-    assert.match(
-      await editing({ edits: [], title: "Sales" }),
-      /Change the title of a chart made by diagram_chart with diagram_updateChart\./,
-    );
-    assert.strictEqual(panel.current, before);
-    assert.notStrictEqual(source, panel.current?.source);
-  });
-
-  test("edits a chart whose source was not kept only once it is drawn again", async () => {
-    const values = new Map<string, unknown>([
-      [
-        "diagram.state",
-        {
-          language: "echarts",
-          title: "Sizes",
-          chart: { type: "bar", file: "sizes.tsv" },
-          origin: "tool",
-          editedByUser: false,
-        },
-      ],
-    ]);
-    const restored = newPanel(values);
-    try {
-      assert.match(
-        await invokeTool(new EditDiagramTool(restored), {
-          edits: [{ oldText: "bar", newText: "line" }],
-        }),
-        /^Nothing was changed: The chart's source was not kept when VS Code restarted\. Ask the user to press Refresh/,
-      );
-    } finally {
-      restored.dispose();
-    }
-  });
-
   test("corrects the links that diagram_render could not add, without the source", async () => {
     const rendered = await invokeTool(new RenderDiagramTool(panel), {
       source: flow,
@@ -577,12 +389,12 @@ suite("diagram_edit", function () {
     });
     assert.match(
       rendered,
-      /These links name nodes the diagram does not have, so nothing opens from them: "Parser"\. Its node ids are "A", "B"\. Correct them with "links" in diagram_edit, e\.g\. \{"newId": "src\/file\.ts#L3", "oldId": null\}\.\n\nRevision: \d+\.$/,
+      /\n\nThese links name nodes the diagram does not have: "Parser"\. Its node ids are "A", "B"\.$/,
     );
     assert.match(rendered, /- "B": "sizes\.tsv:2" gives its line after a colon/);
     assert.strictEqual(
       await editing({ edits: [], links: { Parser: null, A: "sizes.tsv", B: "sizes.tsv#L2" } }),
-      `Updated the flowchart-v2 diagram. Its code links are on "A", "B".\n\nRevision: ${panel.revision}.`,
+      "Edited the flowchart-v2 diagram.",
     );
     assert.strictEqual(panel.current?.source, flow);
   });
@@ -593,7 +405,7 @@ suite("diagram_edit", function () {
     });
     assert.match(
       result,
-      /^The diagram failed to render with this error:\n\nParse error on line 3, column 5: unexpected "-->"\.\n\nLines 1-3 of the source:\n1: flowchart LR\n2: {3}A\[Parser\] --> B\[Checker\]\n3: {3}B -->--> C\n\nFix the Mermaid syntax with diagram_edit, or call diagram_render again with the complete corrected source\./,
+      /^The diagram fails to render:\n\nParse error on line 3, column 5: unexpected "-->"\.\n\nLines 1-3 of the source:\n1: flowchart LR\n2: {3}A\[Parser\] --> B\[Checker\]\n3: {3}B -->--> C\n\nThe panel shows the error\. Fix it with diagram_edit or diagram_render\.$/,
     );
     assert.match(await editing({ edits: [{ oldText: "-->-->", newText: "-->" }] }), /^Edited/);
     assert.strictEqual(panel.current?.error, undefined);
@@ -613,7 +425,7 @@ suite("diagram_edit in the webview", function () {
     const failed = await editing({ edits: [{ oldText: "B --> C", newText: "B --> --> C" }] });
     assert.match(
       failed,
-      /^The edited diagram failed to render with this error:\n\n.*line 3[\s\S]*\n\nLines 1-4 of the source:\n1: flowchart LR\n2: {3}A --> B\n3: {3}B --> --> C\n4: {3}C --> D\n\nThe panel shows it with this error\. Fix it with diagram_edit\.\n\nRevision: \d+\.$/,
+      /^The diagram fails to render:\n\n.*line 3[\s\S]*\n\nLines 1-4 of the source:\n1: flowchart LR\n2: {3}A --> B\n3: {3}B --> --> C\n4: {3}C --> D\n\nThe panel shows the error\. Fix it with diagram_edit or diagram_render\.$/,
     );
     assert.match(await editing({ edits: [{ oldText: "--> -->", newText: "-->" }] }), /^Edited/);
     assert.strictEqual(page.panel.current?.error, undefined);
@@ -626,31 +438,11 @@ suite("diagram_edit in the webview", function () {
         '{\n  "xAxis": {"data": ["a", "b"]},\n  "yAxis": {},\n  "series": [{"type": "bar", "data": [1, 2]}]\n}',
     });
     const failed = await editing({ edits: [{ oldText: "[1, 2]", newText: "[1 2]" }] });
-    assert.match(
-      failed,
-      /^The edited chart failed to render with this error:\n\n.*\(line 4, column \d+\)/,
-    );
+    assert.match(failed, /^The chart fails to render:\n\n.*\(line 4, column \d+\)/);
     assert.match(
       failed,
       /\n\nLines 1-5 of the source:\n1: \{\n[\s\S]*4: {3}"series": \[\{"type": "bar", "data": \[1 2\]\}\]\n5: \}\n\n/,
     );
-  });
-
-  test("gives a subgraph the id that diagram_style asks for, to color it", async () => {
-    await draw({ source: 'flowchart LR\n  subgraph "Payment flow"\n    A --> B\n  end' });
-    const style = (id: string) =>
-      invokeTool(new StyleDiagramTool(page.panel), { styles: [{ id, fill: "green" }] });
-    assert.match(
-      await style("Payment flow"),
-      /"Payment flow" is a label, not an id in the source, so no style line can name it\. Give the subgraph an id with diagram_edit first, e\.g\. `subgraph pay \[Payment flow\]`\./,
-    );
-    assert.match(
-      await editing({
-        edits: [{ oldText: 'subgraph "Payment flow"', newText: 'subgraph pay ["Payment flow"]' }],
-      }),
-      /^Edited the flowchart-v2 diagram with 1 edit, in line 2 of 4\./,
-    );
-    assert.match(await style("pay"), /^Styled "pay" \(fill green/);
   });
 
   test("keeps the user's unapplied edits of the source, as with any incoming diagram", async () => {

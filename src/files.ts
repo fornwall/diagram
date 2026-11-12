@@ -1,7 +1,6 @@
 // Resolving and decoding the files that users and models name.
 
 import { lstatSync, readlinkSync, realpathSync } from "node:fs";
-import { readlink } from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
@@ -29,7 +28,7 @@ export function contains(root: vscode.Uri, uri: vscode.Uri): boolean {
  * ".." taken by their text, as Uri.joinPath does, as such file systems have no links. VS Code keeps
  * them from a folder's "uri" in a workspace file.
  */
-export function virtualFolderPath(root: vscode.Uri): string {
+function virtualFolderPath(root: vscode.Uri): string {
   return root.path && path.posix.normalize(root.path).replace(/\/$/, "");
 }
 
@@ -47,7 +46,7 @@ function withinPath(root: string, file: string): boolean {
  * Only such paths are resolved on the file system before the user is asked, as resolving any other
  * could reach a network share, sending the user's credentials, or hang on an unreachable mount.
  */
-export function nearRoot(root: vscode.Uri, uri: vscode.Uri): boolean {
+function nearRoot(root: vscode.Uri, uri: vscode.Uri): boolean {
   const folded = (uri: vscode.Uri) =>
     uri.with({
       authority: uri.authority.toLowerCase(),
@@ -154,21 +153,13 @@ function followLinks(file: string, roots: readonly vscode.WorkspaceFolder[]): bo
   return step.value;
 }
 
-/** As {@link inWorkspace}, for a local `file` inside a workspace folder by its path. */
-export async function staysInside(file: string, roots: readonly LocalRoot[]): Promise<boolean> {
-  const steps = linksInside(file, roots);
-  let step = steps.next();
-  while (!step.done) step = steps.next(await readlink(step.value, "buffer").catch(noLink));
-  return step.value === true;
-}
-
 /**
  * A workspace folder on this computer, by its path without "." and "..", which VS Code keeps from a
  * folder's "uri" in a workspace file but not in the names of files in it, and by its real path, or
  * the error for a folder that has none, from which nothing is followed: ".." steps up from a real
  * path.
  */
-export type LocalRoot = readonly [file: string, real: string | Error];
+type LocalRoot = readonly [file: string, real: string | Error];
 
 /** The names in a path, without "." and empty ones, by the rules `p` of its system. */
 function names(file: string, p: typeof path.posix = path): string[] {
@@ -355,7 +346,7 @@ export function resolveFile(file: string): vscode.Uri {
 }
 
 /** The UTF-16 encoding whose byte order mark `bytes` start with, if any. */
-export function utf16(bytes: Uint8Array): "utf-16le" | "utf-16be" | undefined {
+function utf16(bytes: Uint8Array): "utf-16le" | "utf-16be" | undefined {
   if (bytes[0] === 0xff && bytes[1] === 0xfe) return "utf-16le";
   return bytes[0] === 0xfe && bytes[1] === 0xff ? "utf-16be" : undefined;
 }
@@ -367,7 +358,7 @@ export function utf16(bytes: Uint8Array): "utf-16le" | "utf-16be" | undefined {
  * @param fatal Whether invalid bytes throw, rather than becoming "\uFFFD".
  * @throws TypeError when `fatal` and the bytes are not valid in that encoding.
  */
-export function decodeText(bytes: Uint8Array, fatal = true): string {
+function decodeText(bytes: Uint8Array, fatal = true): string {
   return new TextDecoder(utf16(bytes) ?? "utf-8", { fatal }).decode(bytes);
 }
 

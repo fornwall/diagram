@@ -1,12 +1,5 @@
 // Wording shared by the messages for users and models.
 
-import { isPlainObject } from "./protocol";
-
-/** A name in camel case in words, e.g. "horizontal bar" for "horizontalBar". */
-export function inWords(name: string): string {
-  return name.replace(/[A-Z]/g, (letter) => ` ${letter.toLowerCase()}`);
-}
-
 /** E.g. `"a", "b"`. */
 export function quoteAll(values: readonly string[]): string {
   return values.map((value) => JSON.stringify(value)).join(", ");
@@ -119,23 +112,6 @@ export function unknownProperties(input: object, known: readonly string[]): stri
   }
   const properties = unknown.length === 1 ? "property" : "properties";
   return `Unknown ${properties} ${quoteAll(unknown)}; the properties are ${quoteAll(known)}.`;
-}
-
-/**
- * A tool input's {@link givenProperties}.
- *
- * @throws Error if it is not an object or has properties other than `known`.
- */
-export function toolInput(value: unknown, known: readonly string[]): Record<string, unknown> {
-  if (!isPlainObject(value)) {
-    throw new Error(`The input must be an object with the properties ${quoteAll(known)}.`);
-  }
-  const input = givenProperties(value);
-  const unknown = unknownProperties(input, known);
-  if (unknown !== undefined) {
-    throw new Error(unknown);
-  }
-  return input;
 }
 
 export function nonBlank(value: unknown): string | undefined {

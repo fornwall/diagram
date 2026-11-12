@@ -1,6 +1,6 @@
 // Exact source replacements and numbered diagnostic excerpts.
 
-import { formatCount, joinWords, lineAndColumn, plural, shorten } from "./text";
+import { formatCount, joinWords, lineAndColumn, shorten } from "./text";
 
 /** Replaces oldText, which must occur once in the source unless every occurrence is to go. */
 export interface SourceEdit {
@@ -235,7 +235,7 @@ export function errorContext(source: string, error: string, previous?: string): 
 }
 
 /** E.g. "Lines 3-9 of the source:" and those lines, numbered, around the given one. */
-export function linesAround(source: string, line: number, what = "source"): string {
+function linesAround(source: string, line: number, what = "source"): string {
   return quotedLines(source, line - CONTEXT_LINES, line + CONTEXT_LINES, what);
 }
 
@@ -248,7 +248,7 @@ function quotedLines(source: string, from: number, to: number, what: string): st
 }
 
 /** The lines of `after` that differ from `before`, from the first to the last. */
-export function changedLines(before: string, after: string): { from: number; to: number } {
+function changedLines(before: string, after: string): { from: number; to: number } {
   const shortest = Math.min(before.length, after.length);
   let prefix = 0;
   while (prefix < shortest && before[prefix] === after[prefix]) prefix++;
@@ -263,11 +263,4 @@ export function changedLines(before: string, after: string): { from: number; to:
   // A change that only removes text is on the line where it was.
   const to = Math.max(from, lineAndColumn(after, Math.max(prefix, after.length - suffix)).line);
   return { from, to };
-}
-
-/** E.g. "2 edits" or "2 edits, 7 replacements in all", for edits that replaced several each. */
-export function editCount(replaced: readonly number[]): string {
-  const total = replaced.reduce((sum, count) => sum + count, 0);
-  const edits = plural(replaced.length, "edit");
-  return total > replaced.length ? `${edits}, ${plural(total, "replacement")} in all` : edits;
 }

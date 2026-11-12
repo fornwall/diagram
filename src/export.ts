@@ -1,8 +1,7 @@
-// Export the drawing shown in the panel as PNG, SVG or HTML with embedded source and data.
+// Export the drawing shown in the panel as PNG or SVG.
 
 import * as os from "node:os";
 import * as vscode from "vscode";
-import { cdnDiagramHtml } from "./cdnDiagram";
 import { notebookOf } from "./documentDiagram";
 import { baseName, contains, fileName } from "./files";
 import {
@@ -35,22 +34,15 @@ export async function exportDrawing(
   drawing: {
     language: DiagramLanguage;
     title: string;
-    source: string;
     document?: vscode.Uri | undefined;
   },
   capture: (format: ExportFormat) => Promise<ExportResult>,
-  extensionUri: vscode.Uri,
 ): Promise<void> {
   const noun = diagramNoun(drawing.language);
   try {
     const formats: (vscode.QuickPickItem & { format: ExportFormat })[] = [
       { label: "PNG image", description: ".png", format: "png" },
       { label: "SVG image", description: ".svg", format: "svg" },
-      {
-        label: "HTML page",
-        description: ".html · Requires internet to view",
-        format: "html",
-      },
     ];
     const choice = await vscode.window.showQuickPick(formats, {
       title: noun === "chart" ? "Export Chart" : "Export Diagram",
@@ -62,9 +54,6 @@ export async function exportDrawing(
     let bytes: Uint8Array;
     if (result.type === "exportError") {
       throw new Error(result.message);
-    } else if (format === "html" && result.type === "exportTheme") {
-      const html = await cdnDiagramHtml(drawing, result.colors, extensionUri);
-      bytes = new TextEncoder().encode(html);
     } else if (result.type === "exportImage" && result.format === format) {
       if (format === "png") {
         const png = pngBytes(result.data);
@@ -95,7 +84,7 @@ export async function exportDrawing(
       throw saveError(error, target);
     }
     lastFolder = vscode.Uri.joinPath(target, "..");
-    void offerToOpen(target, noun, format);
+    void offerToOpen(target, noun);
   } catch (error) {
     void vscode.window.showErrorMessage(`Could not export the ${noun}: ${errorMessage(error)}`);
   }
@@ -132,26 +121,18 @@ function saveError(error: unknown, target: vscode.Uri): Error {
   return new Error(message);
 }
 
-/**
- * Says where the export was saved, and opens it if the user asks: an image in VS Code, and a page in
- * the user's browser, where its chart is interactive.
- */
-async function offerToOpen(target: vscode.Uri, noun: string, format: ExportFormat): Promise<void> {
+/** Says where the export was saved, and opens it in VS Code if the user asks. */
+async function offerToOpen(target: vscode.Uri, noun: string): Promise<void> {
   try {
     const open = await vscode.window.showInformationMessage(
       `Saved the ${noun} to ${baseName(target)}.`,
       "Open",
     );
     if (!open) return;
-    if (format !== "html") {
-      await vscode.commands.executeCommand("vscode.open", target);
-    } else if (!(await vscode.env.openExternal(target))) {
-      throw new Error("No application accepted the file");
-    }
+    await vscode.commands.executeCommand("vscode.open", target);
   } catch (error) {
-    const where = format === "html" ? " in your browser" : "";
     void vscode.window.showErrorMessage(
-      `Could not open the saved ${noun}: ${errorClause(error)}. Open ${target.fsPath}${where}.`,
+      `Could not open the saved ${noun}: ${errorClause(error)}. Open ${target.fsPath}.`,
     );
   }
 }

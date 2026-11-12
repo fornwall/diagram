@@ -2,7 +2,6 @@
 
 import {
   type Annotation,
-  type AnnotationStep,
   type DiagramMark,
   isMarkKind,
   isPlainObject,
@@ -12,22 +11,13 @@ import { brief, givenProperties, quoteAll, unknownProperties } from "./text";
 
 /** As declared in package.json, but a model may not follow the schema exactly. */
 export interface AnnotateInput {
-  revision?: number;
   marks?: { id: string; mark?: string; text?: string }[];
   dim?: boolean;
   focus?: boolean;
-  steps?: { text: string; marks?: AnnotateInput["marks"]; dim?: boolean; focus?: boolean }[];
 }
 
-const INPUT_KEYS = [
-  "marks",
-  "dim",
-  "focus",
-  "steps",
-  "revision",
-] as const satisfies readonly (keyof AnnotateInput)[];
+const INPUT_KEYS = ["marks", "dim", "focus"] as const satisfies readonly (keyof AnnotateInput)[];
 const MARK_KEYS = ["id", "mark", "text"] as const;
-const STEP_KEYS = ["text", "marks", "dim", "focus"] as const;
 
 const MAX_MARKS = 50;
 
@@ -39,11 +29,6 @@ export function validateAnnotation(value: unknown): Annotation {
     throw new Error(`The marks must be given as an object, e.g. ${EXAMPLE}.`);
   }
   const input = givenProperties(value);
-  if (
-    input.revision !== undefined &&
-    (!Number.isSafeInteger(input.revision) || Number(input.revision) < 0)
-  )
-    throw new Error('"revision" must be a nonnegative integer from diagram_getState.');
   const problems: string[] = [];
   const unknown = unknownProperties(input, INPUT_KEYS);
   if (unknown !== undefined) {
@@ -57,46 +42,6 @@ export function validateAnnotation(value: unknown): Annotation {
     }
   }
 
-  let steps: AnnotationStep[] | undefined;
-  if (input.steps !== undefined) {
-    if (!Array.isArray(input.steps) || input.steps.length === 0 || input.steps.length > 20) {
-      problems.push('"steps" must contain from 1 to 20 walkthrough steps.');
-    } else {
-      steps = [];
-      for (const [index, value] of input.steps.entries()) {
-        const issues: string[] = [];
-        if (!isPlainObject(value)) {
-          issues.push("A step must be an object.");
-        } else {
-          const step = givenProperties(value);
-          const unknown = unknownProperties(step, STEP_KEYS);
-          if (unknown) issues.push(unknown);
-          if (typeof step.text !== "string" || !step.text.trim() || step.text.length > 1000) {
-            issues.push('"text" must contain from 1 to 1,000 characters.');
-          }
-          for (const key of ["dim", "focus"] as const) {
-            if (step[key] !== undefined && typeof step[key] !== "boolean") {
-              issues.push(`"${key}" must be true or false.`);
-            }
-          }
-          const marks = parseMarks(step.marks, issues);
-          if (issues.length === 0) {
-            steps.push({
-              text: step.text as string,
-              marks,
-              dim: (step.dim ?? input.dim) === true,
-              ...((step.focus ?? input.focus) !== undefined && {
-                focus: (step.focus ?? input.focus) === true,
-              }),
-            });
-          }
-        }
-        problems.push(...issues.map((issue) => `Step ${index + 1}: ${issue}`));
-      }
-    }
-    if (marks.length > 0) problems.push('Use "marks" inside the steps, not beside "steps".');
-  }
-
   if (problems.length > 0) {
     throw new Error(`Invalid marks:\n- ${problems.join("\n- ")}`);
   }
@@ -104,7 +49,6 @@ export function validateAnnotation(value: unknown): Annotation {
     marks,
     dim: input.dim === true,
     ...(input.focus !== undefined && { focus: input.focus === true }),
-    ...(steps && { steps, step: 0 }),
   };
 }
 
@@ -166,28 +110,4 @@ function parseMark(given: unknown, marked: Set<string>): DiagramMark | string {
     return '"text" must contain from 1 to 500 characters.';
   }
   return { id, kind, ...(typeof mark.text === "string" && { text: mark.text }) };
-}
-
-/** The marks currently displayed, including the selected walkthrough step. */
-export function annotationFrame(annotation: Annotation): Annotation | AnnotationStep {
-  return annotation.steps?.[annotation.step ?? 0] ?? annotation;
-}
-
-/** All marks, including those in later walkthrough steps. */
-export function allAnnotationMarks(annotation: Annotation): DiagramMark[] {
-  return [...annotation.marks, ...(annotation.steps?.flatMap((step) => step.marks) ?? [])];
-}
-
-/** Resolve or remove marks in each frame independently. */
-export function mapAnnotationMarks(
-  annotation: Annotation,
-  map: (marks: DiagramMark[]) => DiagramMark[],
-): Annotation {
-  return {
-    ...annotation,
-    marks: map(annotation.marks),
-    ...(annotation.steps && {
-      steps: annotation.steps.map((step) => ({ ...step, marks: map(step.marks) })),
-    }),
-  };
 }

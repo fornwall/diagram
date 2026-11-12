@@ -16,10 +16,6 @@ const SPLIT_ICON = icon(
   '<rect x="1.5" y="2.5" width="13" height="11" rx="1"/><path d="M8 2.5v11"/>',
 );
 const SOURCE_ICON = icon('<path d="M6 3.5 2.5 8 6 12.5"/><path d="M10 3.5 13.5 8 10 12.5"/>');
-/** A picture, for the handle that drags the drawing out of the panel as an image. */
-const IMAGE_ICON = icon(
-  '<rect x="1.5" y="3" width="13" height="10" rx="1"/><circle cx="5.5" cy="6.5" r="1.1"/><path d="M2 11.5 6 8l3 2.5 2-1.5 3 2.5"/>',
-);
 
 /** Loads the page into the webview, which may run scripts and load only the built files in dist. */
 export function loadWebview(webview: vscode.Webview, extensionUri: vscode.Uri): void {
@@ -65,9 +61,7 @@ export function loadWebview(webview: vscode.Webview, extensionUri: vscode.Uri): 
         <button id="zoom-reset" title="Reset zoom (Ctrl/Cmd+0)" aria-label="100%: Reset zoom">100%</button>
         <button id="zoom-in" title="Zoom in (Ctrl/Cmd+=)" aria-label="Zoom in">+</button>
       </div>
-      <button id="refresh" hidden>Refresh</button>
       <button id="write-to" hidden></button>
-      <span id="drag-out" class="drag-out" draggable="true" role="img" aria-label="Drag the drawing into another application as an image" title="Drag into another app as an image (hold Shift to drag SVG)" hidden>${IMAGE_ICON}</span>
       <div id="views" class="views" role="group" aria-label="View">
         <button id="view-visual" aria-pressed="true" title="Show the diagram">${DIAGRAM_ICON}</button>
         <button id="view-split" aria-pressed="false" title="Show the diagram and its source">${SPLIT_ICON}</button>
@@ -76,14 +70,6 @@ export function loadWebview(webview: vscode.Webview, extensionUri: vscode.Uri): 
     </div>
   </header>
   <div id="render-status" role="status"></div>
-  <section id="chart-options" aria-label="Chart Options" hidden></section>
-  <div id="pick" hidden>
-    <span id="pick-prompt"></span>
-    <div class="actions">
-      <button id="pick-done" hidden>Done</button>
-      <button id="pick-cancel" class="secondary">Cancel</button>
-    </div>
-  </div>
   <div id="error" role="alert" hidden></div>
   <div id="panes" class="view-visual">
     <section id="editor">

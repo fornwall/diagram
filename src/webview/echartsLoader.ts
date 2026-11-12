@@ -1,5 +1,4 @@
-// The panel loads dist/echarts.js on its first chart. Exported HTML sets the same DiagramECharts
-// global from a CDN module before starting the renderer.
+// The panel loads dist/echarts.js, which sets the DiagramECharts global, on its first chart.
 
 import type * as EChartsLibrary from "./echartsLibrary";
 

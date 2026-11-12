@@ -1,7 +1,7 @@
 import * as assert from "node:assert";
 import { GUIDE_TOPICS } from "../guideTopics";
 import { textWidth } from "../webview/echartsLibrary";
-import { builtOption, layout, type Option, svgOf, withChart } from "./echartsModel";
+import { layout, type Option, svgOf, withChart } from "./echartsModel";
 
 suite("echartsPie", () => {
   test("measures labels with the same font cache keys that ECharts uses to wrap them", () => {
@@ -159,95 +159,5 @@ suite("echartsPie", () => {
     const svg = svgOf(layout(JSON.parse(topic?.example ?? "{}"), size), size);
     assert.match(svg, />Photos:(?: 25\.74%)? ?</);
     assert.doesNotMatch(svg, /(?:…|\.\.\.)</);
-  });
-
-  test("draws the labels of diagram_chart's pies whole in a narrow panel", () => {
-    const table = "component,bugs\nParser,42\nRenderer,31\nCommand line,9\nDocumentation,6";
-    const size = { width: 396, height: 575 };
-    for (const type of ["pie", "doughnut"] as const) {
-      const option = layout(
-        builtOption({ type, data: "unused", labelColumn: "component" }, table),
-        size,
-      );
-      const svg = svgOf(option, size);
-      assert.match(svg, />Documentation: 6\.82%</, type);
-      assert.doesNotMatch(svg, /(?:…|\.\.\.)</, type);
-    }
-  });
-
-  test("cuts short only the words of a pie's labels that their font draws wider than the room", () => {
-    const table = "component,bugs\nParser,42\nRenderer,31\nCommand line,9\nDocumentation,6";
-    // "Parser:" is narrower than its 7 characters at the average width of one.
-    const size = { width: 350, height: 575 };
-    const option = layout(
-      builtOption({ type: "doughnut", data: "unused", labelColumn: "component" }, table),
-      size,
-    );
-    assert.match(svgOf(option, size), />Parser: ?</);
-  });
-
-  test("breaks the names of a pie's labels in Chinese onto lines rather than cutting them short", () => {
-    const table =
-      "component,bugs\n解析器与语法检查模块,42\n渲染器,31\n命令行界面工具集合,9\n文档,6\n安装脚本,5";
-    const names = table
-      .split("\n")
-      .slice(1)
-      .map((row) => row.split(",")[0] ?? "");
-    for (const width of [350, 396]) {
-      const size = { width, height: 575 };
-      const option = layout(
-        builtOption({ type: "pie", data: "unused", labelColumn: "component" }, table),
-        size,
-      );
-      // ECharts breaks text in Chinese between any two characters, as it reads.
-      const labels = [...svgOf(option, size).matchAll(/>([^<>]+)<\/text>/g)]
-        .map(([, text = ""]) => text.trim())
-        .join("");
-      for (const name of names) assert.ok(labels.includes(`${name}:`), `${name} of ${labels}`);
-      assert.doesNotMatch(labels, /…|\.\.\./);
-    }
-  });
-
-  test("keeps the shares of diagram_chart's pie labels where a word of them does not fit", () => {
-    const table =
-      "component,bugs\nParser,42\nRenderer,31\nCommand line interface,9\nDocumentation,6\nInstallation scripts,5";
-    const shares = ["45.16%", "33.33%", "9.68%", "6.45%", "5.38%"];
-    // Of the labels and the legend.
-    const words = new Set(table.split(/[\s,]+/).flatMap((word) => [word, `${word}:`]));
-    // Beside a pie of the panel's radius, and of diagram_chart's doughnut, where the shares fit.
-    for (const [width, type] of [
-      [260, "pie"],
-      [300, "pie"],
-      [350, "doughnut"],
-    ] as const) {
-      const size = { width, height: 575 };
-      const option = layout(
-        builtOption({ type, data: "unused", labelColumn: "component" }, table),
-        size,
-      );
-      const drawn = [...svgOf(option, size).matchAll(/>([^<>]+)<\/text>/g)]
-        .map(([, text = ""]) => text)
-        .join(" ");
-      // Each share, of a word cut short rather than broken within it.
-      for (const share of shares) assert.ok(drawn.includes(share), `${share} of ${drawn}`);
-      for (const word of drawn.split(/\s+/).filter(Boolean)) {
-        assert.ok(
-          words.has(word) || shares.includes(word) || /(?:…|\.\.\.):?$/.test(word),
-          `${word} of ${drawn}`,
-        );
-      }
-    }
-    // A formatter of the option's own, as a function, labels each slice still, cut short whole.
-    const formatter = ({ name }: { name: string }) => `${name}!`;
-    const own = builtOption({ type: "doughnut", data: "unused", labelColumn: "component" }, table);
-    own.series[0].label = { formatter };
-    const size = { width: 284, height: 575 };
-    const labels = layout(own, size).series[0].data.map(({ label }: Option) => label);
-    assert.ok(
-      labels.some((label: Option) => label?.overflow === "truncate"),
-      JSON.stringify(labels),
-    );
-    assert.ok(labels.every((label: Option) => label?.formatter === undefined));
-    assert.match(svgOf(layout(own, size), size), />Renderer!</);
   });
 });

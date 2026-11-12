@@ -7,7 +7,6 @@ on:
 permissions:
   contents: read
 
-# A newer push supersedes branch/PR checks, but must not interrupt a release upload.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: ${{ github.ref_type != 'tag' }}
@@ -19,7 +18,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          # Nothing here pushes, so keep the token from install scripts and tests.
           persist-credentials: false
       - uses: actions/setup-node@v7
         with:
@@ -27,26 +25,15 @@ jobs:
           cache: npm
       - name: Validate release tag
         if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-        shell: bash
-        run: |
-          node <<'NODE'
-          const { version } = require('./package.json');
-          const tag = process.env.GITHUB_REF_NAME;
-          if (!/^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(tag) || tag !== `v${version}`) {
-            throw new Error(`Release tag ${tag} must be v${version}, matching package.json (no prerelease suffix).`);
-          }
-          NODE
+        run: test "$GITHUB_REF_NAME" = "v$(node -p 'require("./package.json").version')"
       - run: npm ci
-      # The VS Code that the tests run in, downloaded again only when .vscode-test.mjs changes it.
       - uses: actions/cache@v6
         with:
           path: .vscode-test/vscode-*
           key: vscode-${{ runner.os }}-${{ hashFiles('.vscode-test.mjs') }}
       - name: Check types, lint, build, and package
         run: npm run vsix -- --out "diagram-chat-${{ github.sha }}.vsix"
-      # Against the minified bundles just packaged, as npm test would test unminified ones. On a
-      # screen of a desktop's size, as the default of 640x480 stacks the panel's panes and narrows
-      # what the tests draw.
+      # Tests the minified bundles on a desktop-sized screen.
       - name: Test in VS Code
         run: npm run compile-tests && xvfb-run -a --server-args="-screen 0 1920x1080x24" npx vscode-test
       - name: Upload VSIX
@@ -80,7 +67,6 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           name: diagram-chat-${{ github.sha }}.vsix
-          # A VSIX is itself a ZIP; keep the original file intact.
           skip-decompress: true
       - name: Sign in with GitHub OIDC
         uses: azure/login@v3
@@ -97,7 +83,6 @@ jobs:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    # Open VSX trusts this workflow file in this environment, without a stored token.
     environment: open-vsx
     permissions:
       contents: read

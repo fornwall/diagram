@@ -1,19 +1,9 @@
 import * as assert from "node:assert";
 import { isFromWebview, safeFileName } from "../protocol";
-import { testColors } from "./themeColors";
 
 suite("protocol", () => {
   test("takes only well-formed messages as messages from the page", () => {
     assert.ok(isFromWebview({ type: "ready" }));
-    const items = {
-      type: "items",
-      requestId: 1,
-      page: { totalItems: 1, matchedItems: 1, startItem: 1, items: [{ id: "A", label: "Cache" }] },
-    };
-    assert.ok(isFromWebview(items));
-    assert.ok(isFromWebview({ type: "itemsError", requestId: 1, message: "Changed" }));
-    assert.ok(isFromWebview({ type: "picked", pickId: 3, nodes: [{ id: "A", label: "Parser" }] }));
-    assert.ok(isFromWebview({ type: "exportTheme", requestId: 1, colors: testColors }));
     assert.ok(isFromWebview({ type: "warningsChanged", requestId: 2, warnings: ["Too wide"] }));
     const rendered = { type: "rendered", requestId: 2, diagramType: "flowchart-v2" };
     assert.ok(
@@ -22,37 +12,18 @@ suite("protocol", () => {
         repair: { source: 'graph LR; A["foo(x)"]', description: "Quoted A" },
       }),
     );
-    const options = { type: "applyChartOptions", revision: 1, controls: { type: "bar" } };
-    assert.ok(isFromWebview({ ...options, replaceSource: false }));
-    // Without controls, a reset of the chart's styling.
-    assert.ok(isFromWebview({ type: "applyChartOptions", revision: 1, replaceSource: true }));
     const malformed = [
-      { ...items, page: { ...items.page, items: [{ id: "A" }] } },
-      { ...items, page: { ...items.page, items: Array(101).fill({ id: "A", label: "Cache" }) } },
-      { ...items, page: { ...items.page, nextItem: "2" } },
-      { ...items, page: { ...items.page, totalItems: -1 } },
       null,
       "ready",
       [{ type: "ready" }],
       { type: "toString" },
-      { type: "picked", pickId: "3", nodes: [] },
       { type: "selectionChanged", nodes: [{ id: "A" }] },
       { type: "ask", nodes: [] },
-      { type: "exportTheme", requestId: 1 },
       { type: "warningsChanged", requestId: 2 },
       { type: "warningsChanged", requestId: 2, warnings: [1] },
       { ...rendered, repair: {} },
       { ...rendered, repair: { source: 1, description: "Quoted A" } },
       { ...rendered, repair: { source: "graph LR", description: false } },
-      // A saved chart needs every color to draw in.
-      { type: "exportTheme", requestId: 1, colors: { ...testColors, palette: [] } },
-      { type: "exportTheme", requestId: 1, colors: { ...testColors, focus: { r: 0, g: 0, b: 0 } } },
-      { type: "exportTheme", requestId: 1, colors: { ...testColors, fontSize: Number.NaN } },
-      // Replacing a chart's source takes an explicit choice, for the revision it was made for.
-      options,
-      { ...options, replaceSource: "true" },
-      { ...options, replaceSource: false, revision: "1" },
-      { ...options, replaceSource: false, controls: [] },
     ];
     for (const message of malformed) {
       assert.ok(!isFromWebview(message), JSON.stringify(message));

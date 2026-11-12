@@ -1,402 +1,103 @@
-// What a language model is told about the diagram panel: the current diagram and what the user
-// did with it.
+// What a language model is told about the diagram panel.
 
-import { annotationFrame } from "./annotations";
 import { codeFence } from "./blocks";
-import { diagramCapabilities } from "./capabilities";
-import { describeUnits } from "./chartColumns";
-import type { ChartPresentation } from "./chartPresentation";
-import type { DataTable } from "./data";
 import { documentName } from "./documentDiagram";
 import { type ItemNames, relationshipList } from "./itemNames";
 import { lineDiff } from "./lineDiff";
 import { linkText } from "./links";
 import type { DiagramState } from "./panel";
-import {
-  ANNOTATE_TOOL,
-  type Annotation,
-  CHART_TOOL,
-  type DiagramNode,
-  EDIT_TOOL,
-  GET_IMAGE_TOOL,
-  GET_STATE_TOOL,
-  INSPECT_DATA_TOOL,
-  isPlainObject,
-  nodeNoun,
-  RENDER_TOOL,
-  type RepeatedName,
-  UPDATE_CHART_TOOL,
-} from "./protocol";
-import { formatCount, inWords, plural, quoteAll } from "./text";
+import { type Annotation, type DiagramNode, nodeNoun, type RepeatedName } from "./protocol";
+import { formatCount, quoteAll } from "./text";
 import { formatOption } from "./webview/optionSource";
 
-/**
- * How much of a long source and list of relationships to give: "brief" leaves them out of every
- * chat request, "full" gives them, as {@link GET_STATE_TOOL} does, "source" gives the source but
- * not a long list, when the full description has no room in the model's input, and "summary"
- * leaves out even a short source, when that has none either. "metadata" omits the source and
- * user-edit diff on request, while keeping the selection, errors and other panel context.
- */
-export type Detail = "brief" | "full" | "source" | "summary" | "metadata";
-
-/** Longer diagram sources are left out of the description, unless it is asked for in full. */
-const MAX_SOURCE_LENGTH = 30_000;
-/**
- * A longer list of relationships is left out in the same way. Each takes about 50 characters, so a
- * large diagram's list could take more of every request than its source.
- */
-const MAX_RELATIONSHIPS_LENGTH = 3_000;
-/** The most manual edits of a generated chart listed, each in about 40 characters. */
-const MAX_LISTED_EDITS = 20;
-/** Longer values of manual edits are shortened, as an object of styling may be large. */
-const MAX_EDIT_VALUE_LENGTH = 60;
-/** A diff of the user's changes this long is given even if longer than the source. */
-const SMALL_DIFF_LENGTH = 1_000;
-/**
- * An option without its long runs of values is given this long when the full source does not fit:
- * about 3,000 tokens.
- */
-const MAX_SUMMARY_SOURCE_LENGTH = 10_000;
-/** Longer runs of lines of values alone, such as of the data of a series, are left out of a long option. */
-const MAX_VALUE_LINES = 8;
-
-/** What the panel knows of the drawing and of the user's interactions with it. */
 interface Drawing {
   selection?: readonly DiagramNode[];
   annotation?: Annotation | undefined;
-  /** The nodes and relationships drawn, by the names that the tools take for them. */
   items?: ItemNames | undefined;
   repeatedNames?: readonly RepeatedName[];
   warnings?: readonly string[];
-  /**
-   * The generated chart's data, if loaded, which diagram_inspectData can show, for the units that
-   * filters and "max" are given in.
-   */
-  chartTable?: DataTable | undefined;
-  detail?: Detail;
 }
 
-/** Describes a diagram, its marks and the user's interactions with it, for a language model. */
 export function describeDiagram(
   state: DiagramState,
-  {
-    selection = [],
-    annotation,
-    items,
-    repeatedNames = [],
-    warnings = [],
-    chartTable,
-    detail = "brief",
-  }: Drawing = {},
+  { selection = [], annotation, items, repeatedNames = [], warnings = [] }: Drawing = {},
 ): string {
   const what = state.language === "echarts" ? "ECharts chart" : "Mermaid diagram";
   const lines = [
     `Current ${what}: ${JSON.stringify(state.title)}`,
     "",
-    describeSource(state, detail),
+    codeFence(state.source, state.language),
     "",
   ];
-  if (detail === "metadata")
-    lines.push(`Capabilities: ${JSON.stringify(diagramCapabilities(state, chartTable))}`, "");
-  const refresh = state.chart?.file !== undefined || state.chart?.command !== undefined;
-  if (state.chart) {
-    lines.push(
-      `${CHART_TOOL} parameters: ${describeChartParameters(state.chart)}.` +
-        (refresh ? " Refresh reloads the data." : "") +
-        (chartTable ? ` ${INSPECT_DATA_TOOL} shows its columns and sample rows.` : ""),
-    );
-    const units = chartTable && describeUnits(chartTable);
-    if (units) lines.push(units);
-  }
-  // Which parts of a generated option were made by hand, which the source alone does not tell.
-  const presentation = state.chart ? state.chartPresentation : undefined;
-  const edits = (!presentation?.blocked && presentation?.edits) || [];
-  if (edits.length > 0) {
-    lines.push(
-      `Manual styling of the generated option, which ${UPDATE_CHART_TOOL} keeps: ${editList(edits)}. Replacing the chart with ${CHART_TOOL} or ${RENDER_TOOL} must make these changes again.`,
-    );
-  }
-  if (state.chart) {
-    if (presentation?.blocked) {
-      lines.push(presentation.blocked);
-    }
-    // Not the kept edits that the chart shows already, such as a scale that it has too.
-    if (!state.chartPresentation?.blocked && state.chartPresentation?.kept?.some((e) => !e.shown)) {
-      lines.push(
-        `Manual styling that this ${inWords(state.chart.type)} chart cannot show comes back with a chart that can; replacing the chart with ${CHART_TOOL} or ${RENDER_TOOL} drops it.`,
-      );
-    }
-    // The table of a file or command is not kept when VS Code restarts.
-    lines.push(
-      refresh && !chartTable
-        ? `Its data is not loaded, and ${UPDATE_CHART_TOOL} never rereads files or reruns commands. To change this generated chart's type, columns, grouping, sort or limit, ask the user to press Refresh in the diagram panel first. Use ${CHART_TOOL} to change its data source.`
-        : `To change this generated chart's type, columns, grouping, sort or limit, use ${UPDATE_CHART_TOOL} with the loaded data. Use ${CHART_TOOL} to change or reload its data source.`,
-    );
-  }
   const links = Object.entries(state.links ?? {}).map(([id, link]) => `${id} → ${linkText(link)}`);
-  if (state.evidence?.length) {
-    lines.push(
-      `Evidence and assumptions are attached to ${state.evidence.length} items. Read diagram_evidence for source locations and freshness; attachments do not verify the claims.`,
-    );
-  }
-  if (links.length > 0) {
-    lines.push(
-      `Code links: ${links.join(", ")}. ${EDIT_TOOL} keeps them. Pass them to ${RENDER_TOOL} when replacing the diagram.`,
-    );
-  }
+  if (links.length > 0) lines.push(`Code links: ${links.join(", ")}.`);
   if (state.document) {
     lines.push(
-      `Opened from a code block in ${documentName(state.document)}. Only the user's Apply or Write to action writes to that file; rendering changes the panel.`,
+      `Opened from a code block in ${documentName(state.document)}. Only the user's Apply writes to that file.`,
     );
   }
-  if (state.error) {
-    lines.push(`It currently fails to render with this error: ${state.error}`);
-  }
-  const changes = detail === "summary" || detail === "metadata" ? undefined : userChanges(state);
-  if (changes) {
+  if (state.error) lines.push(`It fails to render: ${state.error}`);
+  const diff = userDiff(state);
+  if (diff) {
     lines.push(
-      `The user changed the source since an agent drew it, as this diff from the agent's version shows. Preserve their changes unless asked otherwise.\n${codeFence(changes.diff, "diff")}`,
+      `The user changed the source since an agent drew it. Preserve their changes unless asked otherwise:\n${codeFence(diff, "diff")}`,
     );
-  } else if (state.editedByUser && edits.length === 0) {
+  } else if (state.editedByUser) {
     lines.push("The user edited this source. Preserve their edits unless asked otherwise.");
   }
   lines.push(...warnings);
-  const named = items && describeRelationships(items, detail);
-  if (named) {
-    lines.push(named);
-  }
-  if (repeatedNames.length > 0) {
+  const relationships = items?.drawn.relationships.filter(({ id }) => !items.named(id));
+  if (relationships?.length) {
     lines.push(
-      `Chart items that share a name (mark them by these exact ids with ${ANNOTATE_TOOL}): ${repeatedList(repeatedNames)}.`,
+      `Name edges and messages by their ends' ids, as in "A --> B", or by id these that their ends and labels do not tell apart: ${relationshipList(relationships)}.`,
     );
   }
-  const nodes = `${nodeNoun(state.language)}s`;
-  const parts = selection.some((node) => node.relationship) ? "items" : nodes;
-  // Also by the ids of edges and messages, when a drawing that failed has no items to tell.
-  const marksRelationships = annotation?.marks.some(
-    ({ id }) => items?.relationship(id) || /^(?:edge|message):/.test(id),
-  );
-  const marked = describeMarks(
-    annotation,
-    marksRelationships ? "items" : nodes,
-    (id) => items?.name(id) ?? id,
-  );
-  if (marked) {
-    lines.push(marked);
+  if (repeatedNames.length > 0) {
+    lines.push(`Chart items that share a name, by id: ${repeatedList(repeatedNames)}.`);
   }
+  const marked = annotation && describeMarks(annotation, (id) => items?.name(id) ?? id);
+  if (marked) lines.push(marked);
+  const nodes = `${nodeNoun(state.language)}s`;
   lines.push(
     selection.length > 0
-      ? `The user has selected these ${parts} in the panel: ${nodeList(selection)}.`
-      : `The user has no ${parts} selected in the panel.`,
+      ? `The user has selected: ${nodeList(selection)}.`
+      : `The user has no ${nodes} selected.`,
   );
   return lines.join("\n");
 }
 
-/**
- * What the user changed of an agent's drawing, as a diff from the agent's source, while the source
- * is the user's edit. A diff longer than a source that is not small tells less than the source:
- * the user rewrote the diagram rather than edit it.
- */
-function userChanges({
-  userEdit,
-  source,
-  language,
-}: DiagramState): { from: string; diff: string } | undefined {
+/** The user's changes as a diff from the agent's source, unless they rewrote it. */
+function userDiff({ userEdit, source, language }: DiagramState): string | undefined {
   if (!userEdit || userEdit.to !== source) return undefined;
   // The user edits a one-line option as the source view formats it.
   const from = language === "echarts" ? formatOption(userEdit.from) : userEdit.from;
   const diff = lineDiff(from, source);
-  return diff &&
-    diff.length <= Math.max(source.length, SMALL_DIFF_LENGTH) &&
-    diff.length <= MAX_SOURCE_LENGTH
-    ? { from: userEdit.from, diff }
-    : undefined;
+  return diff && diff.length <= Math.max(source.length, 1_000) ? diff : undefined;
 }
 
-/**
- * Lists the manual edits of a generated option by where they are, e.g. `yAxis.name = "Revenue"`,
- * shortening long values, which the source gives in full.
- */
-function editList(edits: ChartPresentation["edits"]): string {
-  const listed = edits.slice(0, MAX_LISTED_EDITS).map(({ path, value, remove, append }) => {
-    const where = path
-      .map((key, index) => (typeof key === "number" ? `[${key}]` : index > 0 ? `.${key}` : key))
-      .join("");
-    if (remove) return `${where} removed`;
-    const json = JSON.stringify(value) ?? "undefined";
-    const shown =
-      json.length > MAX_EDIT_VALUE_LENGTH ? `${json.slice(0, MAX_EDIT_VALUE_LENGTH)}…` : json;
-    return append ? `${where} added ${shown}` : `${where} = ${shown}`;
-  });
-  const more = edits.length - listed.length;
-  return listed.join(", ") + (more > 0 ? ` and ${plural(more, "more edit")}` : "");
-}
-
-/** Inline data is already represented by the chart; don't repeat it in every chat turn. */
-export function describeChartParameters(chart: unknown): string {
-  if (!isPlainObject(chart)) return "(unavailable)";
-  const { data, ...parameters } = chart;
-  const json = JSON.stringify(parameters);
-  const description =
-    json.length <= MAX_SOURCE_LENGTH
-      ? json
-      : `(parameters omitted: ${plural(json.length, "character")})`;
-  return typeof data === "string"
-    ? `${description} (inline data: ${plural(data.length, "character")})`
-    : description;
-}
-
-/**
- * How a model names the edges or messages of a drawing for the tools that take item ids: by their
- * ends' ids, which it knows from the source, unlike their ids, with their labels those between the
- * same nodes as others, and by their ids those that their labels do not tell apart either, in a
- * list that a long one leaves out.
- */
-function describeRelationships(items: ItemNames, detail: Detail): string | undefined {
-  const { relationships } = items.drawn;
-  if (relationships.length === 0) return undefined;
-  const kinds = new Set(relationships.map(({ relationship }) => relationship?.kind));
-  const [one, many] =
-    kinds.size > 1
-      ? ["an edge or message", "edges and messages"]
-      : kinds.has("message")
-        ? ["a message", "messages"]
-        : ["an edge", "edges"];
-  // Examples of the drawing's own, which show that the ids are those of the source.
-  const named = relationships.map(({ id }) => items.named(id));
-  const example = (labeled: boolean) => named.find((name) => name?.labeled === labeled)?.name;
-  const labeled = example(true);
-  const naming =
-    `Name ${one} by its ends' ids, as in ${JSON.stringify(example(false) ?? "A --> B")}` +
-    (labeled
-      ? `, and one of several between the same nodes with its label, as in ${JSON.stringify(labeled)}`
-      : "") +
-    `, for ${ANNOTATE_TOOL} and ${GET_IMAGE_TOOL}`;
-  const unnamed = relationships.filter((_, index) => !named[index]);
-  if (unnamed.length === 0) return `${naming}.`;
-  const listed = relationshipList(unnamed);
-  if (detail === "full" || listed.length <= MAX_RELATIONSHIPS_LENGTH) {
-    return `${naming}. Name by id these, which their ends and labels do not tell apart: ${listed}.`;
-  }
-  const these = `${plural(unnamed.length, one.replace(/^an? /, ""), many)}, which their ends and labels do not tell apart`;
-  return detail === "summary" || detail === "metadata" || detail === "source"
-    ? `${naming}. It has ${these}, too many to list their ids in the room left in your input. ${GET_STATE_TOOL} with detail:"items" pages through them.`
-    : `${naming}. It has ${these}, too many to list their ids in every request; ${GET_STATE_TOOL} with detail:"items" pages through them.`;
-}
-
-/** What the user is looking at on the diagram, as the last call to the annotate tool left it. */
-function describeMarks(
-  annotation: Annotation | undefined,
-  parts: string,
-  name: (id: string) => string,
-): string | undefined {
-  if (!annotation) {
-    return undefined;
-  }
-  const { marks, dim } = annotationFrame(annotation);
-  const step = annotation.steps?.[annotation.step ?? 0];
-  if (marks.length === 0 && !step) return undefined;
+function describeMarks(annotation: Annotation, name: (id: string) => string): string | undefined {
+  const { marks, dim } = annotation;
+  if (marks.length === 0) return undefined;
   const listed = marks.map(
     ({ id, kind, text }) =>
       `${JSON.stringify(name(id))} (${kind})${text ? `: ${JSON.stringify(text)}` : ""}`,
   );
-  return (
-    (step
-      ? `Walkthrough step ${(annotation.step ?? 0) + 1}/${annotation.steps?.length}: ${JSON.stringify(step.text)}. `
-      : "") +
-    (marks.length ? `Marked ${parts}: ${listed.join(", ")}.` : "No items are marked.") +
-    (dim && marks.length ? " Everything else is faded." : "") +
-    ` ${ANNOTATE_TOOL} replaces the marks; call without marks to clear them.`
-  );
+  return `Marked: ${listed.join(", ")}.${dim ? " Everything else is faded." : ""}`;
 }
 
-/**
- * A long source is left out of every chat request, but given in full when asked for, as a model has
- * to read a source to change it, unless the room left in its input is too small for it. A long
- * ECharts option, such as a chart of much data, is given without its long runs of lines of values,
- * which shows a model what to change of the rest.
- */
-function describeSource({ source, language }: DiagramState, detail: Detail): string {
-  if (source === undefined) {
-    return "(Not drawn: the option was too large to keep when VS Code closed. The panel asks the user to press Refresh.)";
-  }
-  const length = `The source is ${formatCount(source.length)} characters long`;
-  const readRange = `${GET_STATE_TOOL} with {"detail": "source", "startLine": 1, "endLine": 200} reads exact source lines; use its revision for edits`;
-  if (detail === "metadata") {
-    return `(${length}; omitted from this response. ${readRange}.)`;
-  }
-  if (detail === "summary") {
-    const elided = language === "echarts" ? withoutValueRuns(source) : undefined;
-    if (elided !== undefined && elided.length <= MAX_SUMMARY_SOURCE_LENGTH) {
-      return elidedSource(`${length}, too long for the room left in your input`, elided);
-    }
-    // Direct the caller to bounded, exact ranges rather than a silently truncated source.
-    const leftOut = `The source, ${formatCount(source.length)} characters long, is left out, as the room left in your input is too small for it.`;
-    return `(${leftOut} ${readRange}.)`;
-  }
-  if (source.length <= MAX_SOURCE_LENGTH || detail === "full" || detail === "source") {
-    return codeFence(source, language);
-  }
-  const why = `${length}, too long to repeat in every request; ${GET_STATE_TOOL} gives it in full`;
-  const elided = language === "echarts" ? withoutValueRuns(source) : undefined;
-  return elided !== undefined && elided.length <= MAX_SOURCE_LENGTH
-    ? elidedSource(why, elided)
-    : `(${why}.)`;
-}
-
-/** An option without its long runs of lines of values, saying why and which lines stand for them. */
-function elidedSource(why: string, elided: string): string {
-  return `${why}. Here it is with long runs of lines of values left out, each marked by a line of "…", which ${EDIT_TOOL}'s oldText must not include:\n${codeFence(elided, "echarts")}\n${GET_STATE_TOOL} with "startLine" and "endLine" reads exact source ranges when you need the omitted values.`;
-}
-
-/** The values of a JSON array, its brackets and commas, of which a line of values consists. */
-const VALUE_TOKENS = /"(?:[^"\\]|\\.)*"|[[\],]|[^\s"[\],]+/g;
-const VALUE = /^(?:".*"|[[\],]|-?\.?\d[\w.+-]*|true|false|null)$/s;
-
-/**
- * An ECharts option with each run of more than {@link MAX_VALUE_LINES} lines of values alone, as of
- * the data of a series, shortened to its first two lines and its last, around a line of "…" that
- * says how many it leaves out. Other lines stay as they are. Undefined if it shortens no run.
- */
-export function withoutValueRuns(source: string): string | undefined {
-  const lines = source.split("\n");
-  const isValues = (line: string) => line.match(VALUE_TOKENS)?.every((token) => VALUE.test(token));
-  const kept: string[] = [];
-  let shortened = false;
-  for (let start = 0; start < lines.length; start++) {
-    let end = start;
-    while (end < lines.length && isValues(lines[end] ?? "")) end++;
-    const run = lines.slice(start, end);
-    if (run.length > MAX_VALUE_LINES) {
-      const indent = /^\s*/.exec(run[2] ?? "")?.[0] ?? "";
-      const more = `${indent}… ${plural(run.length - 3, "more line")} of values …`;
-      kept.push(run[0] ?? "", run[1] ?? "", more, run.at(-1) ?? "");
-      shortened = true;
-    } else {
-      kept.push(...run);
-    }
-    if (end < lines.length) kept.push(lines[end] ?? "");
-    start = end;
-  }
-  return shortened ? kept.join("\n") : undefined;
-}
-
-/**
- * Lists nodes for a language model, e.g. `"Parser" (id: "A"), "Checker" (id: "B")`. Labels and ids
- * are quoted as JSON, as chart item ids may contain parentheses, commas and outer spaces.
- */
+/** E.g. `"Parser" (id: "A"), "Checker" (id: "B")`, quoted as JSON as chart ids may hold commas. */
 export function nodeList(nodes: readonly DiagramNode[]): string {
   return nodes
     .map(({ label, id, relationship: relation }) => {
       const details = relation
-        ? `; ${relation.kind}; from: ${JSON.stringify(relation.source)}; to: ${JSON.stringify(relation.target)}; direction: ${relation.direction}`
+        ? `; ${relation.kind}; from: ${JSON.stringify(relation.source)}; to: ${JSON.stringify(relation.target)}`
         : "";
       return `${JSON.stringify(label)} (id: ${JSON.stringify(id)}${details})`;
     })
     .join(", ");
 }
 
-/** Lists repeated chart item names with their ids, e.g. `"Yes" (ids: "Yes (q1)", "Yes (q2)")`. */
+/** E.g. `"Yes" (ids: "Yes (q1)", "Yes (q2)")`. */
 export function repeatedList(repeated: readonly RepeatedName[]): string {
   return repeated
     .map(({ name, ids, count }) => {

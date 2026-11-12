@@ -1,53 +1,21 @@
 # Contributing
 
-## Development
-
 Use Node.js 26 and VS Code 1.145 or later.
 
 ```sh
-git clone https://github.com/fornwall/diagram.git
-cd diagram
 npm ci
-npm run compile
+npm run compile   # type check, lint and build
+npm run format    # format and apply safe lint fixes
+npm test          # VS Code integration tests
 ```
 
-Press <kbd>F5</kbd> in VS Code to launch an Extension Development Host with watch mode. Reload it after extension changes; reopen the diagram panel after webview changes. To try the panel without a chat provider, open a Markdown `mermaid` or `echarts` block with **Open in Diagram**.
+Press <kbd>F5</kbd> to launch an Extension Development Host. The extension host is in `src/`, the webview in `src/webview/`, and the messages between them in `src/protocol.ts`.
 
-## Checks and tests
-
-```sh
-npm run compile                 # type checks, lint, and build
-npm run format                  # formatting and safe lint fixes
-npm test                        # VS Code integration tests; no chat account needed
-npm test -- --grep '^data '      # run a subset
-```
-
-On headless Linux:
-
-```sh
-xvfb-run -a --server-args="-screen 0 1920x1080x24" npm test
-```
-
-If tests hang in VS Code's terminal, try an external terminal. For bug fixes, add a regression test in `src/test`. Check panel changes in light and dark themes and with keyboard navigation.
-
-The extension host lives in `src/`, the browser UI in `src/webview/`, and their shared messages in `src/protocol.ts`. `agents/diagram.agent.md` contributes the Diagram agent; `diagram_guide` supplies the shared workflow.
-
-For a chat smoke test, enable Diagram tools in ordinary agent chat and ask for a flowchart. Select an item in the panel and send a follow-up, then edit its source and ask for another change. Repeat with **Diagram** selected in the agent dropdown. Check that both paths use the same panel, keep selections available, and preserve your edits. Try an invalid diagram and confirm the tool returns an error the agent can repair. This requires a signed-in chat provider; the integration suite checks tool calls, agent discovery and panel interactions without one.
-
-## Reporting bugs
-
-Include extension and VS Code versions, reproduction steps, and expected behavior. Attach diagram source or sample data for rendering problems; include the model name and prompt for chat problems.
-
-## Packaging and releases
-
-`npm run vsix` builds a production VSIX; `npm run analyze` reports bundle sizes. Install a VSIX with **Extensions: Install from VSIX…**. CI tests the production bundles on every push and pull request and keeps the VSIX artifact for 90 days.
-
-To publish the next patch release from a clean `main`:
+## Releases
 
 ```sh
 npm version patch
-git push origin main
-git push origin "v$(node -p 'require("./package.json").version')"
+git push origin main "v$(node -p 'require("./package.json").version')"
 ```
 
-`npm version patch` commits the version bump and creates the tag. Pushing a `vX.Y.Z` tag matching `package.json` publishes to Visual Studio Marketplace and Open VSX after CI passes. Use a new version for each release, without prerelease suffixes.
+Pushing a `vX.Y.Z` tag publishes to the Visual Studio Marketplace and Open VSX after CI passes.

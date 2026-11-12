@@ -1,4 +1,3 @@
-import { collectItemPage } from "../itemPage";
 import {
   type Annotation,
   type DiagramLanguage,
@@ -10,10 +9,7 @@ import {
 } from "../protocol";
 import { quoteAll } from "../text";
 import { AnnotationView } from "./annotationView";
-import type { ChartOptionsForm } from "./chartOptions";
 import { toCss } from "./colors";
-import { DraftRenderer } from "./draftRenderer";
-import { enableDragOut } from "./dragOut";
 import { loadECharts } from "./echartsLoader";
 import { keepFocusInContent } from "./focus";
 import { MODEL_TEXT_SIZE, pngDataUrl, pngScale } from "./images";
@@ -34,7 +30,6 @@ import { enableZoom } from "./zoom";
 declare function acquireVsCodeApi(): StateApi & { postMessage(message: unknown): void };
 
 const vscode = acquireVsCodeApi();
-const drafts = new DraftRenderer(enqueue);
 const post = (message: FromWebview) => vscode.postMessage(message);
 
 function element<T extends HTMLElement>(id: string): T {
@@ -63,40 +58,13 @@ const zoomGroup = element("zoom");
 const zoomOutButton = element("zoom-out");
 const zoomResetButton = element("zoom-reset");
 const zoomInButton = element("zoom-in");
-const refreshButton = element<HTMLButtonElement>("refresh");
 const writeToButton = element<HTMLButtonElement>("write-to");
 const applyButton = element<HTMLButtonElement>("apply");
-const dragOutHandle = element("drag-out");
 const viewsGroup = element("views");
-const pickBanner = element("pick");
-const pickPrompt = element("pick-prompt");
-const pickDoneButton = element<HTMLButtonElement>("pick-done");
-
-/** The chart options form, loaded when first shown. */
-let chartOptions: Promise<ChartOptionsForm> | undefined;
-const loadChartOptions = () =>
-  (chartOptions ??= import("./chartOptions").then(
-    ({ ChartOptionsForm }) => new ChartOptionsForm(element("chart-options"), post, focusContent),
-    (error: unknown) => {
-      // Let the next time the form is shown try again.
-      chartOptions = undefined;
-      transientHint(
-        `Could not load Chart Options: ${errorClause(error)}. Reload the window (Developer: Reload Window).`,
-      );
-      throw error;
-    },
-  ));
 
 // Register panning first so it can suppress clicks after a drag.
 enablePanning(canvas);
 const split = enableSplitter(splitter, panes, element("editor"), saveState);
-const forgetDragImage = enableDragOut(dragOutHandle, {
-  drawing: () => active,
-  background: imageBackground,
-  enqueue,
-  title: () => titleElement.textContent?.trim() ?? "",
-  hint: transientHint,
-});
 
 const editor = new SourceEditor(
   {
@@ -123,9 +91,7 @@ const selection = new Map<string, DiagramNode>();
 let clickPrompt: string | undefined;
 /** Code links by node id. */
 let links = new Map<string, string>();
-let pick: { id: number; multiple: boolean } | undefined;
 let hasMarks = false;
-let annotationId: number | undefined;
 
 // Rendering.
 
@@ -150,7 +116,7 @@ const createRenderer: Record<DiagramLanguage, () => Promise<Renderer>> = {
   echarts: async () => {
     // The library is a script of its own, without which there is no chart to draw.
     const [{ EChartsRenderer }] = await Promise.all([import("./echartsRenderer"), loadECharts()]);
-    return new EChartsRenderer(itemClicked, canvas, readThemeColors, () => tabHidden);
+    return new EChartsRenderer(itemClicked, canvas, () => tabHidden);
   },
 };
 const renderers = new Map<DiagramLanguage, Promise<Renderer>>();
@@ -183,11 +149,6 @@ const explanations = new AnnotationView(
   (frame) => {
     active?.showMarks(frame);
     updateMenuContext();
-    forgetDragImage();
-  },
-  (step) => {
-    if (current && annotationId !== undefined)
-      post({ type: "annotationStep", requestId: current.requestId, annotationId, step });
   },
   () => {
     if (editor.view === "source") editor.setView("split");
@@ -219,13 +180,12 @@ type RenderMessage = Extract<ToWebview, { type: "render" }>;
 
 /** Sets up what clicks and the header's actions do for the diagram, or for none. */
 function showActions(
-  { clickPrompt: prompt, links: linked, refreshFrom, writeTo }: Partial<RenderMessage>,
+  { clickPrompt: prompt, links: linked, writeTo }: Partial<RenderMessage>,
   noun = "diagram",
 ): void {
   clickPrompt = prompt;
   links = new Map(Object.entries(linked ?? {}));
   canvas.classList.toggle("click-to-ask", clickPrompt !== undefined);
-  showRefresh(refreshFrom);
   showWriteTo(writeTo, noun);
 }
 
@@ -244,7 +204,6 @@ function showWriteTo(writeTo: string | undefined, noun: string): void {
 }
 
 async function render(message: RenderMessage): Promise<void> {
-  forgetDragImage();
   const { language, source, requestId } = message;
   titleElement.textContent = message.title;
   let renderer: Renderer;
@@ -328,7 +287,7 @@ async function render(message: RenderMessage): Promise<void> {
       repeatedNames: renderer.repeatedNames?.(),
     };
   } catch (error) {
-    // Show only the error, as the title, Refresh, clicks and the source editor are now for the
+    // Show only the error, as the title, clicks and the source editor are now for the
     // diagram that failed, which is also the one the extension describes to the model.
     renderer.hide();
     active = undefined;
@@ -348,8 +307,6 @@ async function render(message: RenderMessage): Promise<void> {
     renderStatus.textContent = "";
   }
   try {
-    // A drawing that replaces the one a pick was asked on is described by its question as well.
-    if (pick) describeByPick(drawingFocus(), true);
     // Only while the page has the focus: focus() would take it from wherever the user went
     // meanwhile. The canvas, which a chart does not render inert, keeps it, but takes the keys
     // only for Mermaid; it also has it from a control that the new drawing hid, such as a zoom
@@ -438,26 +395,9 @@ function drawingFocus(): HTMLElement {
 
 function updateToolbar(): void {
   zoomGroup.hidden = !active?.zoomBy;
-  dragOutHandle.hidden = active === undefined;
   viewsGroup.hidden = current === undefined;
 }
 updateToolbar();
-
-function showRefresh(from: string | undefined): void {
-  refreshButton.hidden = from === undefined;
-  if (from !== undefined) refreshButton.title = `Load the data again from ${from}`;
-}
-
-/** Shows the title of a chart that was not kept, and asks to draw it again. */
-function showNeedsRefresh({
-  title,
-  refreshFrom,
-}: Extract<ToWebview, { type: "needsRefresh" }>): void {
-  titleElement.textContent = title;
-  showRefresh(refreshFrom);
-  emptyElement.textContent =
-    "This chart was too large to keep when VS Code closed. Press Refresh to draw it again.";
-}
 
 // Renders one at a time, in order, so that a slow render cannot overtake a later one.
 let queue = Promise.resolve();
@@ -471,45 +411,6 @@ function enqueue(task: () => void | Promise<void>): void {
 window.addEventListener("message", (event: MessageEvent<ToWebview>) => {
   const message = event.data;
   switch (message.type) {
-    case "validateDraft": {
-      const revision = renderRevision;
-      enqueue(async () => {
-        if (revision !== renderRevision) {
-          post({
-            type: "draftResult",
-            requestId: message.requestId,
-            error: "The diagram changed before validation started.",
-          });
-          return;
-        }
-        post(
-          await drafts.validate(message, {
-            width: canvas.clientWidth,
-            height: canvas.clientHeight,
-          }),
-        );
-      });
-      break;
-    }
-    case "getItems":
-      enqueue(() => {
-        try {
-          if (!active || current?.requestId !== message.renderRequestId) {
-            throw new Error(
-              "The drawing changed or is unavailable. Read the current state and retry.",
-            );
-          }
-          const renderer = active;
-          const page = collectItemPage((visit) => {
-            if (renderer.eachItem) renderer.eachItem(visit, message.includeData);
-            else renderer.drawnNodes?.().forEach(visit);
-          }, message);
-          post({ type: "items", requestId: message.requestId, page });
-        } catch (error) {
-          post({ type: "itemsError", requestId: message.requestId, message: errorMessage(error) });
-        }
-      });
-      break;
     case "export":
       enqueue(() => exportDrawing(message));
       break;
@@ -519,19 +420,6 @@ window.addEventListener("message", (event: MessageEvent<ToWebview>) => {
       if (shown) active?.tabShown();
       break;
     }
-    case "chartOptions":
-      // The form starts hidden, so there is nothing to hide before it is loaded.
-      if (message.state || chartOptions !== undefined) {
-        const form = loadChartOptions();
-        enqueue(async () => (await form).update(message.state));
-      }
-      break;
-    case "chartOptionsError":
-      if (chartOptions !== undefined) {
-        const form = chartOptions;
-        enqueue(async () => (await form).showError(message.message));
-      }
-      break;
     case "render": {
       const revision = ++renderRevision;
       // Load the renderer meanwhile if the queue is busy.
@@ -544,9 +432,6 @@ window.addEventListener("message", (event: MessageEvent<ToWebview>) => {
       });
       break;
     }
-    case "needsRefresh":
-      enqueue(() => showNeedsRefresh(message));
-      break;
     case "writeTo": {
       // After the renders sent before, which name the document as it was then.
       const revision = renderRevision;
@@ -560,9 +445,6 @@ window.addEventListener("message", (event: MessageEvent<ToWebview>) => {
     case "clearSelection":
       clearSelection();
       break;
-    case "highlightPath":
-      highlightPath();
-      break;
     case "annotate": {
       // In the render queue, so that marks sent right after a diagram land on that diagram.
       const revision = renderRevision;
@@ -571,15 +453,6 @@ window.addEventListener("message", (event: MessageEvent<ToWebview>) => {
       });
       break;
     }
-    // In the render queue, so that a pick sent with a diagram focuses its drawing, and in order.
-    case "startPick":
-      enqueue(() => startPick(message.pickId, message.prompt, message.multiple));
-      break;
-    case "endPick":
-      enqueue(() => {
-        if (pick?.id === message.pickId) endPick();
-      });
-      break;
   }
 });
 
@@ -591,8 +464,6 @@ let themeFrame = 0;
 const themeObserver = new MutationObserver(() => {
   cancelAnimationFrame(themeFrame);
   themeFrame = requestAnimationFrame(() => {
-    // The image prepared for a drag was drawn in the colors that are now gone.
-    forgetDragImage();
     closeLinkMenu();
     for (const renderer of renderers.values()) {
       enqueue(async () => (await renderer).themeChanged());
@@ -612,44 +483,19 @@ function updateSelectionUi(): void {
   const noun = current?.renderer.noun ?? "diagram";
   const labels = Array.from(selection.values(), (node) => `“${node.label}”`);
   selectionLabel.textContent = labels.length > 0 ? `Selected: ${labels.join(", ")}` : "";
-  clearSelectionButton.hidden = labels.length === 0 || pick !== undefined;
+  clearSelectionButton.hidden = labels.length === 0;
   updateMenuContext();
-  pickDoneButton.disabled = labels.length === 0;
   askInput.placeholder =
     labels.length > 0 ? "Ask about or change the selection…" : `Ask about or change the ${noun}…`;
 }
 
-/** The path action is available only for two nodes connected in selection order. */
-function selectedPath(): DiagramNode[] | undefined {
-  if (canvas.getAttribute("aria-busy") === "true") return;
-  const [from, to] = selection.values();
-  if (pick || selection.size !== 2 || !from || !to || from.relationship || to.relationship) return;
-  return active?.supportsPaths ? active.findPath?.(from.id, to.id) : undefined;
-}
-
 function updateMenuContext(): void {
   document.body.dataset.vscodeContext = JSON.stringify({
-    "diagram.canHighlightPath": selectedPath() !== undefined,
-    "diagram.canClearSelection": !pick && (selection.size > 0 || hasMarks),
+    "diagram.canClearSelection": selection.size > 0 || hasMarks,
   });
 }
 
-function highlightPath(): void {
-  // Check again: the selection or drawing may have changed since the menu opened.
-  const path = selectedPath();
-  const [from, to] = selection.values();
-  if (!from || !to || !path) return;
-  selection.clear();
-  for (const node of path) selection.set(node.id, node);
-  selectionChanged();
-  focusContent();
-  transientHint(
-    `Highlighted the shortest path from ${from.label} to ${to.label} (${path.filter((node) => node.relationship).length} edges).`,
-  );
-}
-
 function selectionChanged(): void {
-  forgetDragImage();
   updateSelectionUi();
   if (current) {
     post({
@@ -669,16 +515,14 @@ function clearSelection(): void {
 
 function itemClicked(hit: Hit | undefined, modifier: boolean): void {
   if (!hit) {
-    if (!pick && !modifier) {
-      clearSelection();
-    }
+    if (!modifier) clearSelection();
     return;
   }
-  // What a plain click does, in order: answer a pick the agent is waiting for, open the code the
+  // What a plain click does, in order: open the code the
   // node links to, open the URL that the source links it to (or offer a menu of several), ask the
   // diagram's clickPrompt in chat, or select the node. A modified click always selects, so that
   // every node can be selected whatever else a click does.
-  if (!pick && !modifier && current) {
+  if (!modifier && current) {
     // The drawing clicked, which the host may have replaced while the click was on its way.
     const { requestId } = current;
     if (!hit.node.relationship && links.has(hit.node.id)) {
@@ -702,18 +546,13 @@ function itemClicked(hit: Hit | undefined, modifier: boolean): void {
     }
   }
   // A plain click selects only this item, or deselects it when nothing else is selected.
-  const single = pick ? !pick.multiple : !modifier;
-  if (single && !(selection.size === 1 && selection.has(hit.key))) {
+  if (!modifier && !(selection.size === 1 && selection.has(hit.key))) {
     selection.clear();
   }
   if (!selection.delete(hit.key)) {
     selection.set(hit.key, hit.node);
   }
   selectionChanged();
-  if (pick && !pick.multiple) {
-    post({ type: "picked", pickId: pick.id, nodes: [hit.node] });
-    endPick();
-  }
 }
 
 canvas.addEventListener("click", (event) => {
@@ -754,56 +593,9 @@ for (const type of ["click", "auxclick"] as const) {
 
 // Annotations.
 
-function showAnnotation(next: Annotation & { annotationId?: number }): void {
-  annotationId = next.annotationId;
-  hasMarks = next.marks.length > 0 || next.dim || (next.steps?.length ?? 0) > 0;
+function showAnnotation(next: Annotation): void {
+  hasMarks = next.marks.length > 0 || next.dim;
   explanations.show(next);
-}
-
-// Picking nodes on request of an agent.
-
-function startPick(id: number, prompt: string, multiple: boolean): void {
-  // Reveal the nodes without discarding an unfinished source edit.
-  if (editor.view === "source") {
-    editor.setView("split");
-  }
-  pick = { id, multiple };
-  clearSelection();
-  pickPrompt.textContent = prompt;
-  pickDoneButton.hidden = !multiple;
-  pickBanner.hidden = false;
-  canvas.classList.add("picking");
-  // A screen reader reads the question with the drawing that the focus moves to, as the banner
-  // that shows it appears only now and so is no live region yet.
-  const drawing = drawingFocus();
-  describeByPick(drawing, true);
-  updateSelectionUi();
-  drawing.focus();
-}
-
-/** Adds the pick question to, or removes it from, what describes the element. */
-function describeByPick(element: Element, add: boolean): void {
-  const ids = (element.getAttribute("aria-describedby") ?? "")
-    .split(" ")
-    .filter((id) => id && id !== pickPrompt.id);
-  if (add) ids.unshift(pickPrompt.id);
-  if (ids.length > 0) element.setAttribute("aria-describedby", ids.join(" "));
-  else element.removeAttribute("aria-describedby");
-}
-
-function endPick(): void {
-  const restoreFocus = pickBanner.contains(document.activeElement);
-  pick = undefined;
-  pickBanner.hidden = true;
-  canvas.classList.remove("picking");
-  // A rendering while picking may have moved the focus to another element.
-  for (const element of document.querySelectorAll(`[aria-describedby~="${pickPrompt.id}"]`)) {
-    describeByPick(element, false);
-  }
-  updateSelectionUi();
-  if (restoreFocus) {
-    focusContent();
-  }
 }
 
 /** Keeps keyboard navigation in the visible content when a focused action disappears. */
@@ -812,30 +604,6 @@ function focusContent(): void {
 }
 
 keepFocusInContent(canvas, focusContent);
-
-pickDoneButton.addEventListener("click", () => {
-  if (pick) {
-    post({ type: "picked", pickId: pick.id, nodes: Array.from(selection.values()) });
-    endPick();
-  }
-});
-
-function cancelPick(): void {
-  if (pick) {
-    post({ type: "pickCancelled", pickId: pick.id });
-    endPick();
-  }
-}
-
-element("pick-cancel").addEventListener("click", cancelPick);
-document.addEventListener("keydown", (event) => {
-  // Escape in a field is for the field, e.g. to close a completion or a select's list, and one
-  // that a control already took, e.g. to close a menu, is not for the pick either.
-  const field = event.target instanceof Element && event.target.matches("input, textarea, select");
-  if (event.key === "Escape" && !field && !event.defaultPrevented) {
-    cancelPick();
-  }
-});
 
 clearSelectionButton.addEventListener("click", () => {
   const restoreFocus = document.activeElement === clearSelectionButton;
@@ -886,7 +654,6 @@ askForm.addEventListener("submit", (event) => {
   }
 });
 
-refreshButton.addEventListener("click", () => post({ type: "refresh" }));
 writeToButton.addEventListener("click", () => {
   if (current) post({ type: "writeToDocument", requestId: current.requestId });
 });
@@ -899,10 +666,6 @@ async function exportDrawing(message: Extract<ToWebview, { type: "export" }>): P
   try {
     if (!active || current?.requestId !== renderRequestId) {
       throw new Error("The diagram changed before it could be exported. Try again.");
-    }
-    if (format === "html") {
-      post({ type: "exportTheme", requestId, colors: readThemeColors() });
-      return;
     }
     const limits = { maxSide, maxPixels };
     if (forModel && format === "png") {
@@ -942,13 +705,6 @@ async function exportDrawing(message: Extract<ToWebview, { type: "export" }>): P
 /** The background an image is drawn on: an image dropped elsewhere has no theme behind it. */
 function imageBackground(): string {
   return toCss(readThemeColors().background);
-}
-
-let hintTimer: ReturnType<typeof setTimeout> | undefined;
-function transientHint(text: string): void {
-  selectionLabel.textContent = text;
-  clearTimeout(hintTimer);
-  hintTimer = setTimeout(updateSelectionUi, 4000);
 }
 
 // Not in the source view, which shows no drawing, nor the buttons, to zoom.

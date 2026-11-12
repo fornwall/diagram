@@ -1,7 +1,7 @@
 {
   "name": "diagram-chat",
   "displayName": "Diagram Chat",
-  "description": "Interactive Mermaid diagrams and Apache ECharts charts beside VS Code chat: draw with your chat agent, chart CSV, JSON or command output, and edit diagrams in Markdown.",
+  "description": "Interactive Mermaid diagrams and Apache ECharts charts beside VS Code chat: draw with your chat agent and edit diagrams in Markdown.",
   "version": "0.11.0",
   "publisher": "fornwall",
   "icon": "images/icon.png",
@@ -16,12 +16,9 @@
   "capabilities": {
     "untrustedWorkspaces": {
       "supported": "limited",
-      "description": "Charts of a shell command's output and chart options with JavaScript code need a trusted workspace. Reading workspace and data files, and opening a diagram's file links, ask for confirmation first."
+      "description": "ECharts options with JavaScript code need a trusted workspace."
     },
-    "virtualWorkspaces": {
-      "supported": "limited",
-      "description": "Charts of a shell command's output are not available in virtual workspaces."
-    }
+    "virtualWorkspaces": true
   },
   "categories": [
     "AI",
@@ -47,7 +44,7 @@
         "canBeReferencedInPrompt": true,
         "icon": "$(type-hierarchy)",
         "userDescription": "Show a Mermaid diagram or an ECharts chart in an interactive panel",
-        "modelDescription": "diagram_render: Show a Mermaid 12 diagram (flowchart, sequence, class, state, ER, Gantt, mind map, architecture-beta, etc.) or an Apache ECharts 6 option (no maps) in the panel beside chat, replacing the current one, where the user can select items and send follow-ups. Returns the diagram type or the render error to fix. To change the current diagram, use diagram_edit; to chart a file, command output or table, use diagram_chart. Pass the current revision when replacing an existing diagram; await the result before another drawing change.",
+        "modelDescription": "Show a Mermaid diagram or an Apache ECharts option in the panel beside chat, replacing the current one. The user can select items, edit the source and ask follow-ups. Returns the diagram type, or the render error to fix.",
         "tags": [
           "diagram",
           "mermaid",
@@ -60,7 +57,11 @@
           "properties": {
             "source": {
               "type": "string",
-              "description": "Complete Mermaid source, or an ECharts option as JSON or a JavaScript object literal with callbacks (formatter, renderItem, symbolSize, etc.); prefer templates such as \"{b}: {c}\" for plain formatters. Omit click directives and HTML, and colors and fonts unless the user asks for them: the panel applies the theme and sizing, and its background follows the VS Code theme. To color items of the current Mermaid diagram, use diagram_style. For a diagram type or chart kind you are unsure of, read its diagram_guide topic first."
+              "description": "Complete Mermaid source, or an ECharts option as JSON or a JavaScript object literal (functions allowed). The panel applies the VS Code theme; add colors and fonts only when they carry meaning."
+            },
+            "file": {
+              "type": "string",
+              "description": "Instead of source, a file holding it (absolute or relative to the workspace), such as a .mmd file or an ECharts option."
             },
             "language": {
               "type": "string",
@@ -76,28 +77,16 @@
             },
             "clickPrompt": {
               "type": "string",
-              "description": "Chat request sent for the user when they click an item, with {label} replaced by its label, e.g. \"Explain {label} in more detail\". For explorable overviews."
+              "description": "Chat request sent when the user clicks an item, with {label} replaced, e.g. \"Explain {label}\"."
             },
             "links": {
               "type": "object",
               "additionalProperties": {
                 "type": "string"
               },
-              "description": "Mermaid node ids mapped to code locations that clicking them opens, absolute or relative to the first workspace folder, with optional lines: {\"parse\": \"src/parser.ts#L42\", \"check\": \"src/checker.ts#L10-L30\"}. Link only code you have read."
-            },
-            "newDiagram": {
-              "type": "boolean",
-              "description": "Start a separate diagram, clearing the current Markdown binding and inherited export location. Defaults to false. Pass revision even when starting another diagram."
-            },
-            "revision": {
-              "type": "integer",
-              "minimum": 0,
-              "description": "Revision from diagram_getState or the last drawing result. Pass it when replacing an existing diagram to reject a stale replacement before reading files or running commands. On conflict, reread state and adapt; keep the revision guard."
+              "description": "Mermaid node ids mapped to code locations that clicking opens, e.g. {\"parse\": \"src/parser.ts#L42-L60\"}."
             }
           },
-          "required": [
-            "source"
-          ],
           "additionalProperties": false
         }
       },
@@ -108,7 +97,7 @@
         "canBeReferencedInPrompt": true,
         "icon": "$(edit)",
         "userDescription": "Change the current diagram or chart with exact replacements in its source",
-        "modelDescription": "diagram_edit: Change the current Mermaid diagram or ECharts chart with exact text replacements in its source, keeping the rest, node ids, the user's edits, the title, code links and click prompt, rather than sending it all again with diagram_render. Copy each oldText exactly from the source that diagram_getState gives; if any edit does not apply, nothing changes and the result quotes the closest lines. Returns what changed, or the render error with the lines around it. On a chart made by diagram_chart, edit only its styling: change its type, columns or data with diagram_updateChart or diagram_chart.",
+        "modelDescription": "Change the current diagram or chart with exact text replacements in its source, keeping the rest, including the user's edits. All edits apply or none do. Returns what changed, or the render error.",
         "tags": [
           "diagram",
           "mermaid",
@@ -126,7 +115,7 @@
                 "properties": {
                   "oldText": {
                     "type": "string",
-                    "description": "Exact text of the source, with its indentation and line breaks, that occurs once unless replaceAll is set."
+                    "description": "Exact text in the source, occurring once unless replaceAll."
                   },
                   "newText": {
                     "type": "string",
@@ -144,16 +133,11 @@
                 "additionalProperties": false
               },
               "maxItems": 50,
-              "description": "Replacements made in order, each in the source that those before it left; all or none are made. Keep each oldText short but unique, e.g. [{\"oldText\": \"A --> B\", \"newText\": \"A --> C[Cache] --> B\"}]."
-            },
-            "revision": {
-              "type": "integer",
-              "minimum": 0,
-              "description": "Revision from diagram_getState or the result of the tool call that drew the diagram; the edits are refused if it has changed since."
+              "description": "Replacements made in order; keep each oldText short but unique."
             },
             "title": {
               "type": "string",
-              "description": "New title shown in the panel; omit to keep it."
+              "description": "New panel title."
             },
             "links": {
               "type": "object",
@@ -167,233 +151,11 @@
                   }
                 ]
               },
-              "description": "Code links to add or change, by Mermaid node id, as in diagram_render, e.g. {\"cache\": \"src/cache.ts#L12\"}; null removes one. The others are kept."
+              "description": "Code links to add or change by node id, as in diagram_render; null removes one."
             }
           },
           "required": [
             "edits"
-          ],
-          "additionalProperties": false
-        }
-      },
-      {
-        "name": "diagram_chart",
-        "displayName": "Chart Data",
-        "toolReferenceName": "chart",
-        "canBeReferencedInPrompt": true,
-        "icon": "$(graph)",
-        "userDescription": "Chart data given inline, in a file or as a command's output",
-        "modelDescription": "diagram_chart: Chart tabular data with Apache ECharts in the panel beside chat, replacing the current diagram. Give exactly one of data, file, command or datasetId, e.g. a treemap of `du -ah src`. Reports how it read the columns. Sizes and durations are read as bytes and seconds, the units of max and filter values. For callbacks such as renderItem or full control of the option, use diagram_render. Pass the current revision when replacing an existing diagram; await the result before another drawing change.",
-        "tags": [
-          "chart",
-          "echarts",
-          "data",
-          "visualization"
-        ],
-        "inputSchema": {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "enum": [
-                "pie",
-                "doughnut",
-                "bar",
-                "horizontalBar",
-                "stackedBar",
-                "line",
-                "area",
-                "stackedArea",
-                "scatter",
-                "histogram",
-                "treemap",
-                "sunburst",
-                "sankey",
-                "heatmap",
-                "radar",
-                "boxplot",
-                "gauge",
-                "funnel"
-              ],
-              "description": "horizontalBar suits long labels; treemap/sunburst sum children; sankey links source and target labels, or labels to a node per value column; heatmap pivots two label columns or uses value columns as columns; radar has an axis per value column; boxplot shows each group's spread; gauge shows one value; funnel orders stages by value; histogram bins the raw numbers of one value column, without labelColumn, aggregate, sort or limit."
-            },
-            "title": {
-              "type": "string",
-              "description": "Short title shown in the panel."
-            },
-            "data": {
-              "type": "string",
-              "description": "Inline data: CSV, TSV, JSON (an array of objects or arrays, an object mapping names to numbers, or JSON Lines), a Markdown table or whitespace-separated columns."
-            },
-            "file": {
-              "type": "string",
-              "description": "Path, absolute or relative to the first workspace folder."
-            },
-            "command": {
-              "type": "string",
-              "description": "Shell command whose standard output is the data, run by /bin/sh (cmd.exe on Windows) in the first workspace folder, or else the home folder, once the user confirms."
-            },
-            "format": {
-              "type": "string",
-              "enum": [
-                "auto",
-                "csv",
-                "tsv",
-                "json",
-                "whitespace"
-              ],
-              "description": "\"auto\" (default) detects the format, including Markdown tables; \"json\" includes JSON Lines."
-            },
-            "labelColumn": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  },
-                  "minItems": 1
-                }
-              ],
-              "description": "Label column by header or generated name, e.g. \"Column 2\"; defaults to the first text column naming each row, or for a boxplot grouping rows. Several, outermost first, give treemap/sunburst levels, sankey stages (source, target), heatmap rows/columns, or a bar, line or area chart's categories and a series per label of the second, for rows such as month,region,sales. Treemap, sunburst and sankey also split paths such as \"src/a/b.ts\" into levels. Dates such as 2026-01-02, 2026-01, 2026/01/02 and ISO times give bar, line, area and scatter charts a time axis; other dates and plain years stay labels."
-            },
-            "valueColumns": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              },
-              "minItems": 1,
-              "description": "One series each, or the first alone with a series per label. Defaults to numeric columns except identifiers (id, rank, pid, etc.) and units differing from the first. Pie, doughnut, treemap, sunburst, gauge and funnel use the first, scatter the first two (x, y), boxplot its raw numbers."
-            },
-            "max": {
-              "type": "number",
-              "description": "Top of a gauge's scale or of every radar axis; inferred by default."
-            },
-            "aggregate": {
-              "type": "string",
-              "enum": [
-                "sum",
-                "mean",
-                "count",
-                "min",
-                "max",
-                "median"
-              ],
-              "description": "Combine rows with the same labels, before sort and limit. \"count\" counts rows and needs no value column, e.g. one row per commit. Omit for boxplot, which summarizes raw groups."
-            },
-            "sort": {
-              "type": "string",
-              "enum": [
-                "ascending",
-                "descending"
-              ],
-              "description": "After grouping, sort by the first value, totals for stacked charts or series split by a second label column, or medians for boxplots. Time axes stay chronological; sort then only affects which rows a limit keeps. Unsupported for histograms."
-            },
-            "limit": {
-              "type": "integer",
-              "minimum": 1,
-              "description": "Keep the first rows after sorting; pie/doughnut combine remaining positive values as \"Other\". Unsupported for histograms, boxplots and bar/line/area charts split into series by a second label column."
-            },
-            "options": {
-              "type": "object",
-              "description": "ECharts option to merge: objects merge, null removes a setting, other values replace it. A \"series\" object applies to every series, and an array merges by index, e.g. {\"series\": [{\"label\": {\"show\": false}}]}. Omit colors, backgrounds and fonts unless the user asks for them. JSON only; for callbacks use diagram_render."
-            },
-            "clickPrompt": {
-              "type": "string",
-              "description": "Chat request sent for the user when they click an item, with {label} replaced by its name, e.g. \"Which files make {label} so large?\"."
-            },
-            "bins": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 200,
-              "description": "Number of equal-width bins; by default about √n of a round width."
-            },
-            "facetColumn": {
-              "type": "string",
-              "minLength": 1,
-              "description": "Split a bar, line, area, scatter or histogram chart into a panel per value of this column (at most 12), after filtering; aggregate, sort and limit apply per panel. It is not inferred as a label or value column."
-            },
-            "facetColumns": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 4,
-              "description": "Facet panels per row; automatic by default, and raised so that the panels take at most 4 rows; the view also shows more per row when rows would be too short to read at its height."
-            },
-            "facetScales": {
-              "type": "string",
-              "enum": [
-                "shared",
-                "independent"
-              ],
-              "description": "Facet panels share axis ranges by default."
-            },
-            "filters": {
-              "type": "array",
-              "maxItems": 50,
-              "items": {
-                "type": "object",
-                "properties": {
-                  "column": {
-                    "type": "string",
-                    "minLength": 1,
-                    "description": "Exact parsed column name from diagram_inspectData."
-                  },
-                  "op": {
-                    "type": "string",
-                    "enum": [
-                      "eq",
-                      "neq",
-                      "lt",
-                      "lte",
-                      "gt",
-                      "gte",
-                      "contains"
-                    ],
-                    "description": "eq/neq compare exact values and types; lt/lte/gt/gte compare numeric cells; contains matches text case-sensitively."
-                  },
-                  "value": {
-                    "anyOf": [
-                      {
-                        "type": "string"
-                      },
-                      {
-                        "type": "number"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ],
-                    "description": "Comparison value: a number in parsed units, a string, or null to match missing cells with eq/neq."
-                  }
-                },
-                "required": [
-                  "column",
-                  "op",
-                  "value"
-                ],
-                "additionalProperties": false
-              },
-              "description": "Keep rows matching all filters, before anything else. Compares parsed cells: eq/neq need the exact value and type (null matches missing cells); lt/lte/gt/gte need numeric cells and a number; contains matches text case-sensitively."
-            },
-            "newDiagram": {
-              "type": "boolean",
-              "description": "Start a separate diagram, clearing the current Markdown binding and inherited export location. Defaults to false. Pass revision even when starting another diagram."
-            },
-            "revision": {
-              "type": "integer",
-              "minimum": 0,
-              "description": "Revision from diagram_getState or the last drawing result. Pass it when replacing an existing diagram to reject a stale replacement before reading files or running commands. On conflict, reread state and adapt; keep the revision guard."
-            },
-            "datasetId": {
-              "type": "string",
-              "minLength": 1,
-              "description": "Reuse a session dataset returned by diagram_inspectData, without reading its source again. Cannot be combined with data, file, command or format. Explicit sources create a fresh snapshot."
-            }
-          },
-          "required": [
-            "type"
           ],
           "additionalProperties": false
         }
@@ -404,8 +166,8 @@
         "toolReferenceName": "diagramState",
         "canBeReferencedInPrompt": true,
         "icon": "$(eye)",
-        "userDescription": "Read the diagram shown in the diagram panel, with your edits and selection",
-        "modelDescription": "diagram_getState: Read the current diagram or chart and its revision before changing unseen source or resolving a selection. Defaults to full context: source, chart settings, links, errors, user edits, marks and selected items. Use detail \"summary\" for metadata without source, \"source\" with startLine/endLine for exact source ranges, \"search\" with query to locate source text, or \"items\" to find exact ids and labels for annotations and image crops. Source and item pages fit the caller's token budget and report continuation positions. Use sinceRevision for source and metadata changes since a previously read revision. Summary includes editStructure, inspectRows and updateChart capabilities and reasons when unavailable.",
+        "userDescription": "Read the diagram in the panel, with your edits and selection",
+        "modelDescription": "Read the current diagram or chart: its source, errors, warnings, the user's edits since the agent's last change, marks, and the items the user selected.",
         "tags": [
           "diagram",
           "mermaid",
@@ -415,69 +177,7 @@
         ],
         "inputSchema": {
           "type": "object",
-          "properties": {
-            "detail": {
-              "type": "string",
-              "enum": [
-                "full",
-                "summary",
-                "source",
-                "search",
-                "items",
-                "changes"
-              ],
-              "description": "\"full\" (default) includes source and context, \"summary\" omits source and diffs, \"source\" reads exact source lines, \"search\" finds source text, \"items\" pages through rendered ids, labels and relationship endpoints as JSON. Items reopens a closed panel. Line bounds imply \"source\"; query alone implies \"search\". Do not combine paging parameters from different modes."
-            },
-            "startLine": {
-              "type": "integer",
-              "minimum": 1,
-              "description": "First source line to read, 1-based; defaults to 1."
-            },
-            "endLine": {
-              "type": "integer",
-              "minimum": 1,
-              "description": "Last source line to read, inclusive; defaults to startLine + 199. Read at most 500 lines per call. The result may return fewer whole lines to fit the token budget."
-            },
-            "query": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 1000,
-              "description": "Literal, case-sensitive text on one line. Required for source search; query alone implies detail \"search\". With detail \"items\", optionally filters ids, labels and relationship endpoints. No regular expressions."
-            },
-            "startMatch": {
-              "type": "integer",
-              "minimum": 1,
-              "description": "First matching line to return, 1-based; defaults to 1. Continue at the position the search reports, keeping the query. Restart if the revision changes. Search only."
-            },
-            "maxMatches": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 50,
-              "description": "Matching lines per search page; defaults to 20. May return fewer whole excerpts to fit the result budget."
-            },
-            "contextLines": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 10,
-              "description": "Lines before and after each matching source line; defaults to 2. Use 0 for minimal results or a larger value to find unique oldText for diagram_edit. Search only."
-            },
-            "startItem": {
-              "type": "integer",
-              "minimum": 1,
-              "description": "First matching item, 1-based; defaults to 1. Requires detail \"items\". Continue at nextItem with the same query; restart if the revision changes. Use returned ids exactly in diagram_annotate or diagram_getImage."
-            },
-            "maxItems": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 100,
-              "description": "Items per page; defaults to 50. Requires detail \"items\". Fewer whole records may fit the result budget. Chart items include data hidden by legend or zoom."
-            },
-            "sinceRevision": {
-              "type": "integer",
-              "minimum": 0,
-              "description": "Read a source diff and changed metadata since this revision, alone or with detail:\"changes\". Session history keeps up to 32 revisions within 4 MB; if unavailable, read current state."
-            }
-          },
+          "properties": {},
           "additionalProperties": false
         }
       },
@@ -488,7 +188,7 @@
         "canBeReferencedInPrompt": true,
         "icon": "$(file-media)",
         "userDescription": "Show the model an image of the diagram or chart in the diagram panel",
-        "modelDescription": "diagram_getImage: Return a PNG of the current diagram or chart as the panel draws it, in the user's theme but without selection or marks, to check its layout, such as overlapping, cut-off or unreadable labels, and fix it. The result says what the image shows at what scale, and when its text is too small to read: then give \"ids\" to see the part around those items larger. Call only if you can view images.",
+        "modelDescription": "Return a PNG of the current drawing as the panel shows it, to check layout and readability. Give ids to zoom in on part of it.",
         "tags": [
           "diagram",
           "mermaid",
@@ -504,74 +204,9 @@
               "items": {
                 "type": "string"
               },
-              "description": "Show only the part around these items: Mermaid node ids, edges or sequence messages by their ends' node ids as \"A --> B\" (all between those nodes) or \"A --> B: label\", or chart item names. Omit for the whole drawing."
-            },
-            "revision": {
-              "type": "integer",
-              "minimum": 0,
-              "description": "Revision from diagram_getState. Rejects ids from an older drawing before reopening, marking or capturing it."
+              "description": "Show only the part around these items: node ids, edges as \"A --> B\", or chart item names."
             }
           },
-          "additionalProperties": false
-        }
-      },
-      {
-        "name": "diagram_guide",
-        "displayName": "Diagram Guide",
-        "toolReferenceName": "diagramGuide",
-        "canBeReferencedInPrompt": true,
-        "icon": "$(book)",
-        "userDescription": "Look up how to draw a kind of Mermaid diagram or ECharts chart well",
-        "modelDescription": "diagram_guide: Read topic \"workflow\" for tool selection and the inspect, render, edit, verify and export workflow. Diagram-type topics give Mermaid 12 or ECharts 6 examples that render, common syntax mistakes, layout tips and panel behavior. Omit topic to list them. Use a type topic before unfamiliar syntax or after a render error you cannot fix.",
-        "tags": [
-          "diagram",
-          "mermaid",
-          "echarts",
-          "chart",
-          "visualization"
-        ],
-        "inputSchema": {
-          "type": "object",
-          "properties": {
-            "topic": {
-              "type": "string",
-              "maxLength": 1000,
-              "description": "\"workflow\" for choosing and combining tools; a Mermaid type such as \"flowchart\", \"sequence\", \"architecture\" or \"gantt\"; or an ECharts topic such as \"echarts\", \"echarts-bar\" or \"echarts-time\". Omit for the index."
-            }
-          },
-          "additionalProperties": false
-        }
-      },
-      {
-        "name": "diagram_pickNodes",
-        "displayName": "Pick Diagram Nodes",
-        "toolReferenceName": "diagramPick",
-        "canBeReferencedInPrompt": true,
-        "icon": "$(target)",
-        "userDescription": "Ask you to select nodes, relationships or chart items in the diagram panel",
-        "modelDescription": "diagram_pickNodes: Ask the user a question and wait until they click their answer in the current diagram or chart, e.g. \"Which step is failing?\". Returns the picked labels and ids, with endpoints for edges and sequence messages, or why nothing was picked.",
-        "tags": [
-          "diagram",
-          "mermaid",
-          "echarts",
-          "chart",
-          "visualization"
-        ],
-        "inputSchema": {
-          "type": "object",
-          "properties": {
-            "prompt": {
-              "type": "string",
-              "description": "One short question shown above the diagram."
-            },
-            "multiple": {
-              "type": "boolean",
-              "description": "Let the user pick several items and confirm with Done. Defaults to false: the first click answers."
-            }
-          },
-          "required": [
-            "prompt"
-          ],
           "additionalProperties": false
         }
       },
@@ -582,7 +217,7 @@
         "canBeReferencedInPrompt": true,
         "icon": "$(pin)",
         "userDescription": "Mark nodes, edges, sequence messages or chart items without drawing again",
-        "modelDescription": "diagram_annotate: Mark items of the current diagram or chart for a walkthrough, a problem or a path, without redrawing it; say in your answer what the marks show. Each call replaces the previous marks and fading; omit marks to clear them. Marks are not part of the source and clear when a new diagram is drawn. Returns which ids were marked and which are unknown. Optional mark.text adds a short callout; focus pans to marks. Submit steps for a numbered walkthrough with user-controlled Previous/Next and active-step context in diagram_getState.",
+        "modelDescription": "Mark items of the current drawing, with optional callouts, without changing its source. Each call replaces earlier marks; omit marks to clear them.",
         "tags": [
           "diagram",
           "mermaid",
@@ -600,7 +235,7 @@
                 "properties": {
                   "id": {
                     "type": "string",
-                    "description": "Exact Mermaid node id; an edge or sequence message by its ends' node ids as \"A --> B\", one of several between the same nodes with its label as \"A --> B: Yes\", or by its edge:/message: id from diagram_getState; or chart item name. Chart items that share a name need the ids diagram_getState lists for them."
+                    "description": "Node id, edge as \"A --> B\" (or \"A --> B: label\"), or chart item name."
                   },
                   "mark": {
                     "type": "string",
@@ -610,7 +245,7 @@
                       "good",
                       "info"
                     ],
-                    "description": "\"current\" (default) for the step being explained, \"problem\" for a failure, \"good\" for something working or a recommended path, \"info\" for a pointer."
+                    "description": "\"current\" (default), \"problem\", \"good\" or \"info\"."
                   },
                   "text": {
                     "type": "string",
@@ -633,1445 +268,36 @@
             },
             "focus": {
               "type": "boolean",
-              "description": "Pan to marked items without changing selection or keyboard focus."
-            },
-            "steps": {
-              "type": "array",
-              "minItems": 1,
-              "maxItems": 20,
-              "description": "Walkthrough with Previous/Next controls. Put marks inside steps; top-level dim/focus are defaults. Current step is reported by diagram_getState.",
-              "items": {
-                "type": "object",
-                "properties": {
-                  "text": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 1000
-                  },
-                  "marks": {
-                    "type": "array",
-                    "maxItems": 50,
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "id": {
-                          "type": "string",
-                          "description": "Exact Mermaid node id; an edge or sequence message by its ends' node ids as \"A --> B\", one of several between the same nodes with its label as \"A --> B: Yes\", or by its edge:/message: id from diagram_getState; or chart item name. Chart items that share a name need the ids diagram_getState lists for them."
-                        },
-                        "mark": {
-                          "type": "string",
-                          "enum": [
-                            "current",
-                            "problem",
-                            "good",
-                            "info"
-                          ],
-                          "description": "\"current\" (default) for the step being explained, \"problem\" for a failure, \"good\" for something working or a recommended path, \"info\" for a pointer."
-                        },
-                        "text": {
-                          "type": "string",
-                          "minLength": 1,
-                          "maxLength": 500,
-                          "description": "Short plain-text callout beside this item."
-                        }
-                      },
-                      "required": [
-                        "id"
-                      ],
-                      "additionalProperties": false
-                    }
-                  },
-                  "dim": {
-                    "type": "boolean"
-                  },
-                  "focus": {
-                    "type": "boolean"
-                  }
-                },
-                "required": [
-                  "text"
-                ],
-                "additionalProperties": false
-              }
-            },
-            "revision": {
-              "type": "integer",
-              "minimum": 0,
-              "description": "Revision from diagram_getState. Rejects ids from an older drawing before reopening, marking or capturing it."
+              "description": "Pan to the marked items."
             }
           },
           "additionalProperties": false
         }
       },
       {
-        "name": "diagram_findFiles",
-        "displayName": "Find Workspace Files",
-        "toolReferenceName": "diagramFiles",
+        "name": "diagram_guide",
+        "displayName": "Diagram Guide",
+        "toolReferenceName": "diagramGuide",
         "canBeReferencedInPrompt": true,
-        "icon": "$(search)",
-        "userDescription": "Find workspace files by glob",
-        "modelDescription": "diagram_findFiles: Find files in all workspace folders by glob. Returns one path per line, usable as diagram_readFile's file and in code links. Skips .git, node_modules and what files.exclude, search.exclude and .gitignore files exclude.",
-        "tags": [
-          "diagram"
-        ],
-        "inputSchema": {
-          "type": "object",
-          "properties": {
-            "glob": {
-              "type": "string",
-              "description": "Glob relative to each workspace folder, e.g. \"**/*.ts\" or \"src/**\", or starting with the absolute path of one folder to match only in it, as files outside the first folder are listed. Defaults to \"**/*\".",
-              "maxLength": 1000
-            },
-            "maxResults": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 200,
-              "description": "Defaults to 100."
-            }
-          },
-          "additionalProperties": false
-        }
-      },
-      {
-        "name": "diagram_searchText",
-        "displayName": "Search Workspace Text",
-        "toolReferenceName": "diagramSearch",
-        "canBeReferencedInPrompt": true,
-        "icon": "$(search)",
-        "userDescription": "Search workspace files for text",
-        "modelDescription": "diagram_searchText: Search workspace text files, including unsaved editor changes, for a literal string, in the files that diagram_findFiles lists. Returns matching lines with their numbers, grouped by file path. Scans at most 1000 files and 16 MiB per call; narrow the glob when it reports incomplete results.",
-        "tags": [
-          "diagram"
-        ],
-        "inputSchema": {
-          "type": "object",
-          "properties": {
-            "query": {
-              "type": "string",
-              "minLength": 1,
-              "description": "Literal text on one line, not a regular expression.",
-              "maxLength": 500
-            },
-            "glob": {
-              "type": "string",
-              "description": "Glob relative to each workspace folder, e.g. \"**/*.ts\" or \"src/**\", or starting with the absolute path of one folder to match only in it, as files outside the first folder are listed. Defaults to \"**/*\".",
-              "maxLength": 1000
-            },
-            "caseSensitive": {
-              "type": "boolean",
-              "description": "Defaults to false."
-            },
-            "maxResults": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 100,
-              "description": "Maximum matching lines; defaults to 50."
-            }
-          },
-          "additionalProperties": false,
-          "required": [
-            "query"
-          ]
-        }
-      },
-      {
-        "name": "diagram_readFile",
-        "displayName": "Read Workspace File",
-        "toolReferenceName": "diagramRead",
-        "canBeReferencedInPrompt": true,
-        "icon": "$(file-code)",
-        "userDescription": "Read lines from a workspace file",
-        "modelDescription": "diagram_readFile: Read numbered lines from a text file in an open workspace folder, including unsaved editor changes. Use the line numbers in code links.",
-        "tags": [
-          "diagram"
-        ],
-        "inputSchema": {
-          "type": "object",
-          "properties": {
-            "file": {
-              "type": "string",
-              "minLength": 1,
-              "description": "Path as diagram_findFiles and diagram_searchText return it: relative to the first workspace folder, or absolute.",
-              "maxLength": 4096
-            },
-            "startLine": {
-              "type": "integer",
-              "minimum": 1,
-              "description": "1-based; defaults to 1."
-            },
-            "endLine": {
-              "type": "integer",
-              "minimum": 1,
-              "description": "Inclusive; defaults to startLine + 199. Reads at most 500 lines."
-            }
-          },
-          "additionalProperties": false,
-          "required": [
-            "file"
-          ]
-        }
-      },
-      {
-        "name": "diagram_inspectData",
-        "displayName": "Inspect Chart Data",
-        "toolReferenceName": "diagramData",
-        "canBeReferencedInPrompt": true,
-        "icon": "$(table)",
-        "userDescription": "Inspect columns and sample rows from the current chart or another data source",
-        "modelDescription": "diagram_inspectData: Report a data source's exact column names, inferred types, row count and sample rows without drawing. Page through wide tables with startColumn/maxColumns and later rows with startRow; nextColumn and nextRow say where to continue. Omit the source to inspect the current chart's loaded data, or give exactly one of data, file or command as for diagram_chart. Each explicit source is read again, including commands. Use ids or selection:true to inspect exact contributing source rows of generated chart items. Filters and summary compute over matching rows without changing the chart or reloading data. Rows retain original 1-based positions; numbers use parsed units. Treemap and sunburst descendants and Sankey nodes/links have contributing-row mappings; options that replace generated data, or edits that alter data/structure, prevent mapping. Explicit sources return a datasetId when the table fits the session cache. Reuse it for paging and diagram_chart; supplying the source again refreshes the data.",
-        "tags": [
-          "diagram"
-        ],
-        "inputSchema": {
-          "type": "object",
-          "properties": {
-            "data": {
-              "type": "string",
-              "description": "Inline data, e.g. CSV or JSON."
-            },
-            "file": {
-              "type": "string",
-              "description": "Path, absolute or relative to the first workspace folder."
-            },
-            "command": {
-              "type": "string",
-              "description": "Shell command whose standard output is the data, run once the user confirms."
-            },
-            "format": {
-              "type": "string",
-              "enum": [
-                "auto",
-                "csv",
-                "tsv",
-                "json",
-                "whitespace"
-              ],
-              "description": "Defaults to \"auto\"."
-            },
-            "sampleRows": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 20,
-              "description": "Maximum sample rows to return, starting at startRow; defaults to 5. Zero returns schema only. Whole rows may be omitted to fit the output limit."
-            },
-            "startRow": {
-              "type": "integer",
-              "minimum": 1,
-              "description": "First parsed data row to sample, 1-based, excluding the header; defaults to 1. Use nextRow from the previous result to continue."
-            },
-            "startColumn": {
-              "type": "integer",
-              "minimum": 1,
-              "description": "First parsed column to inspect, 1-based; defaults to 1. Use nextColumn from the previous result to continue. Exact names in the result can be used in chart settings."
-            },
-            "maxColumns": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 60,
-              "description": "Maximum columns to return, including their sample cells; defaults to 60. Fewer may fit when names are long. Lower this to leave room for samples."
-            },
-            "ids": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              },
-              "minItems": 1,
-              "maxItems": 20,
-              "description": "Exact current chart item ids whose contributing source rows to inspect, including hierarchy descendants and Sankey nodes/links. Mutually exclusive with selection, explicit sources and datasetId."
-            },
-            "selection": {
-              "type": "boolean",
-              "description": "Inspect rows contributing to the current chart selection. Requires a generated chart and loaded data."
-            },
-            "filters": {
-              "type": "array",
-              "maxItems": 50,
-              "items": {
-                "type": "object",
-                "properties": {
-                  "column": {
-                    "type": "string",
-                    "minLength": 1,
-                    "description": "Exact parsed column name from diagram_inspectData."
-                  },
-                  "op": {
-                    "type": "string",
-                    "enum": [
-                      "eq",
-                      "neq",
-                      "lt",
-                      "lte",
-                      "gt",
-                      "gte",
-                      "contains"
-                    ],
-                    "description": "eq/neq compare exact values and types; lt/lte/gt/gte compare numeric cells; contains matches text case-sensitively."
-                  },
-                  "value": {
-                    "anyOf": [
-                      {
-                        "type": "string"
-                      },
-                      {
-                        "type": "number"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ],
-                    "description": "Comparison value: a number in parsed units, a string, or null to match missing cells with eq/neq."
-                  }
-                },
-                "required": [
-                  "column",
-                  "op",
-                  "value"
-                ],
-                "additionalProperties": false
-              },
-              "description": "Keep rows matching all filters, before anything else. Compares parsed cells: eq/neq need the exact value and type (null matches missing cells); lt/lte/gt/gte need numeric cells and a number; contains matches text case-sensitively."
-            },
-            "summary": {
-              "type": "boolean",
-              "description": "Include count, min, max, sum, mean and median for numeric columns over all matching rows, before sample paging."
-            },
-            "revision": {
-              "type": "integer",
-              "minimum": 0,
-              "description": "Guard current loaded chart data against a changed revision. Omit with an explicit source or datasetId."
-            },
-            "datasetId": {
-              "type": "string",
-              "minLength": 1,
-              "description": "Reuse a session dataset returned by diagram_inspectData, without reading its source again. Cannot be combined with data, file, command or format. Explicit sources create a fresh snapshot. Omit ids, selection and revision, which refer to the current chart."
-            }
-          },
-          "additionalProperties": false
-        }
-      },
-      {
-        "name": "diagram_updateChart",
-        "displayName": "Update Current Chart",
-        "toolReferenceName": "diagramUpdate",
-        "canBeReferencedInPrompt": true,
-        "icon": "$(graph)",
-        "userDescription": "Change the current chart's settings without reloading its data",
-        "modelDescription": "diagram_updateChart: Change the current chart made by diagram_chart, reusing its loaded data without rereading files or rerunning commands. Settings mean the same as in diagram_chart; omitted ones are kept, except those a new type cannot use, and null clears one. Keeps supported manual styling, and refuses changes that would lose unsupported manual source edits. To change the data source, use diagram_chart.",
-        "tags": [
-          "diagram"
-        ],
-        "inputSchema": {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "enum": [
-                "pie",
-                "doughnut",
-                "bar",
-                "horizontalBar",
-                "stackedBar",
-                "line",
-                "area",
-                "stackedArea",
-                "scatter",
-                "histogram",
-                "treemap",
-                "sunburst",
-                "sankey",
-                "heatmap",
-                "radar",
-                "boxplot",
-                "gauge",
-                "funnel"
-              ],
-              "description": "New chart type; omit to keep it. Incompatible controls are cleared where required; settings such as max may remain unused until switching back. Use diagram_render for an arbitrary ECharts option."
-            },
-            "title": {
-              "type": "string",
-              "description": "New panel title; omit to keep it."
-            },
-            "labelColumn": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  },
-                  "minItems": 1
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Column name, or names outermost first. Several give hierarchy levels, sankey endpoints, heatmap rows/columns, or category and series labels for bar/line/area charts. null restores inference. Omit for histograms."
-            },
-            "valueColumns": {
-              "anyOf": [
-                {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  },
-                  "minItems": 1
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Numeric column names for the series: two for XY scatter, one when dates supply x; pie/treemap/gauge use the first, boxplot and histogram use raw values. null restores inference."
-            },
-            "max": {
-              "anyOf": [
-                {
-                  "type": "number"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Top of a gauge scale or every radar axis, in parsed units (bytes for sizes, seconds for durations). null restores automatic bounds."
-            },
-            "aggregate": {
-              "anyOf": [
-                {
-                  "type": "string",
-                  "enum": [
-                    "sum",
-                    "mean",
-                    "count",
-                    "min",
-                    "max",
-                    "median"
-                  ]
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Combine rows with the same labels before sorting and limiting. \"count\" counts rows without a value column. Boxplot and histogram need raw rows. null removes grouping."
-            },
-            "sort": {
-              "anyOf": [
-                {
-                  "type": "string",
-                  "enum": [
-                    "ascending",
-                    "descending"
-                  ]
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Sort by the first value, totals for stacked charts or series split by a second label column, or medians for boxplots. Time axes stay chronological. null removes explicit value sorting. Unsupported for histograms."
-            },
-            "limit": {
-              "anyOf": [
-                {
-                  "type": "integer",
-                  "minimum": 1
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Keep this many rows after sorting; pie/doughnut combine remaining positive values as \"Other\". null removes the limit. Unsupported for histograms, boxplots and bar/line/area charts split into series by a second label column."
-            },
-            "revision": {
-              "type": "integer",
-              "minimum": 0,
-              "description": "Revision from diagram_getState or the result of the tool call that drew the chart; the update is refused if the chart has changed since."
-            },
-            "bins": {
-              "anyOf": [
-                {
-                  "type": "integer",
-                  "minimum": 1,
-                  "maximum": 200
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Number of equal-width histogram bins, from 1 to 200. null restores automatic binning."
-            },
-            "facetColumn": {
-              "anyOf": [
-                {
-                  "type": "string",
-                  "minLength": 1
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Split bar/line/area/scatter/histogram charts into a panel per value of this column (at most 12), after filtering. Aggregate, sort and limit apply per panel. null removes facets."
-            },
-            "facetColumns": {
-              "anyOf": [
-                {
-                  "type": "integer",
-                  "minimum": 1,
-                  "maximum": 4
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Facet panels per row, from 1 to 4; layout may increase this to keep panels readable. null restores automatic layout."
-            },
-            "facetScales": {
-              "anyOf": [
-                {
-                  "type": "string",
-                  "enum": [
-                    "shared",
-                    "independent"
-                  ]
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "\"shared\" compares facet panels on the same axis ranges; \"independent\" fits each panel separately. null restores shared scales."
-            },
-            "filters": {
-              "anyOf": [
-                {
-                  "type": "array",
-                  "maxItems": 50,
-                  "items": {
-                    "type": "object",
-                    "properties": {
-                      "column": {
-                        "type": "string",
-                        "minLength": 1,
-                        "description": "Exact parsed column name from diagram_inspectData."
-                      },
-                      "op": {
-                        "type": "string",
-                        "enum": [
-                          "eq",
-                          "neq",
-                          "lt",
-                          "lte",
-                          "gt",
-                          "gte",
-                          "contains"
-                        ],
-                        "description": "eq/neq compare exact values and types; lt/lte/gt/gte compare numeric cells; contains matches text case-sensitively."
-                      },
-                      "value": {
-                        "anyOf": [
-                          {
-                            "type": "string"
-                          },
-                          {
-                            "type": "number"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ],
-                        "description": "Comparison value: a number in parsed units, a string, or null to match missing cells with eq/neq."
-                      }
-                    },
-                    "required": [
-                      "column",
-                      "op",
-                      "value"
-                    ],
-                    "additionalProperties": false
-                  }
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Keep rows matching all filters before grouping, sorting and limiting. This replaces the entire filter list; null or [] clears it. Numeric comparisons use parsed units (bytes or seconds)."
-            }
-          },
-          "additionalProperties": false
-        }
-      },
-      {
-        "name": "diagram_style",
-        "displayName": "Color Diagram Items",
-        "toolReferenceName": "diagramStyle",
-        "canBeReferencedInPrompt": true,
-        "icon": "$(symbol-color)",
-        "userDescription": "Set the fill, border and text colors of nodes, subgraphs, edges, classes, states or ER entities in the Mermaid diagram",
-        "modelDescription": "diagram_style: Color items of the current Mermaid diagram, only when the user asks for colors: flowchart nodes, subgraphs and edges, classes, states and ER entities, by their style and linkStyle lines, keeping the rest of the source. Sets fill, stroke (a border, or an edge's line) and text, which defaults to black or white, whichever reads on the fill. Take the ids from the source or the selection that diagram_getState gives. The panel background follows the VS Code theme and cannot be changed.",
-        "tags": [
-          "diagram",
-          "mermaid",
-          "visualization"
-        ],
-        "inputSchema": {
-          "type": "object",
-          "properties": {
-            "styles": {
-              "type": "array",
-              "items": {
-                "type": "object",
-                "properties": {
-                  "id": {
-                    "type": "string",
-                    "description": "Exact Mermaid id of a node, subgraph, class, state or entity, as in the source, or a flowchart edge by its ends' ids as \"A --> B\", with its label as \"A --> B: Yes\" where several go between them."
-                  },
-                  "fill": {
-                    "anyOf": [
-                      {
-                        "type": "string"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ],
-                    "description": "Background as a CSS color: a name, #rgb, #rrggbb, #rrggbbaa, rgb() or hsl(). null removes it; omit to keep it."
-                  },
-                  "stroke": {
-                    "anyOf": [
-                      {
-                        "type": "string"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ],
-                    "description": "Border as a CSS color. null removes it; omit to keep it."
-                  },
-                  "text": {
-                    "anyOf": [
-                      {
-                        "type": "string"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ],
-                    "description": "Label color as a CSS color, or \"auto\" for black or white, whichever contrasts more with the fill; a translucent fill leaves it to the panel. Defaults to \"auto\" with a fill. null removes it; removing the fill removes it too unless given."
-                  },
-                  "clear": {
-                    "type": "boolean",
-                    "description": "true removes the item's whole style line. Give no colors with it."
-                  }
-                },
-                "required": [
-                  "id"
-                ],
-                "additionalProperties": false
-              },
-              "minItems": 1,
-              "maxItems": 50,
-              "description": "Items to color, e.g. [{\"id\": \"pay\", \"fill\": \"green\"}]."
-            },
-            "revision": {
-              "type": "integer",
-              "minimum": 0,
-              "description": "Revision from diagram_getState or the result of the tool call that drew the diagram; the change is refused if the diagram has changed since."
-            }
-          },
-          "required": [
-            "styles"
-          ],
-          "additionalProperties": false
-        }
-      },
-      {
-        "name": "diagram_exportHtml",
-        "displayName": "Export Diagram as HTML",
-        "toolReferenceName": "diagramExport",
-        "canBeReferencedInPrompt": true,
-        "icon": "$(export)",
-        "userDescription": "Save the current diagram or chart as a named HTML file with its renderer loaded from a CDN",
-        "modelDescription": "diagram_exportHtml: Save the current Mermaid diagram or ECharts chart to a named HTML file. Embeds its current source, data and theme, and loads a pinned renderer from a CDN, so viewing needs internet access. Does not reread data files or rerun commands. Use after rendering and checking the result; pass its revision to avoid exporting a changed diagram. Asks confirmation before writing and refuses existing files unless overwrite is true. Returns the saved path and revision. The panel Export command also offers PNG, SVG and the same HTML export.",
+        "icon": "$(book)",
+        "userDescription": "Look up how to draw a kind of Mermaid diagram or ECharts chart well",
+        "modelDescription": "Syntax notes, working examples and pitfalls for a Mermaid diagram type or ECharts chart kind. Omit topic to list topics.",
         "tags": [
           "diagram",
           "mermaid",
           "echarts",
           "chart",
-          "export"
+          "visualization"
         ],
         "inputSchema": {
           "type": "object",
           "properties": {
-            "file": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 4096,
-              "description": "Destination ending in .html or .htm, absolute or relative to the first workspace folder, e.g. \"docs/architecture.html\". The parent folder must exist."
-            },
-            "revision": {
-              "type": "integer",
-              "minimum": 0,
-              "description": "Revision from diagram_getState or the rendering tool result; refuses to export if the diagram has changed."
-            },
-            "overwrite": {
-              "type": "boolean",
-              "description": "Defaults to false, preserving existing files. Set true only when the user wants to replace the destination. Files with unsaved editor changes are always preserved."
-            }
-          },
-          "required": [
-            "file"
-          ],
-          "additionalProperties": false
-        }
-      },
-      {
-        "name": "diagram_queryGraph",
-        "displayName": "Query Diagram Relationships",
-        "toolReferenceName": "diagramGraph",
-        "canBeReferencedInPrompt": true,
-        "icon": "$(references)",
-        "userDescription": "Find paths, dependencies, directed cycles and components in the diagram",
-        "modelDescription": "diagram_queryGraph: Query the current Mermaid graph by exact node ids, returning paged items with exact ids and relationship endpoints. upstream/downstream include the starting node and edges within reached nodes; path returns one shortest directed path in order; cycles returns strongly connected groups of directed edges, ignoring undirected links; components returns weakly connected groups. Sequence messages are excluded. focus fades items outside the complete result, up to 50 items, without editing source; clear through diagram_annotate with no marks. Supports at most 10,000 graph items. Keep the same revision while paging; use diagram_getState detail:items to find ids.",
-        "tags": [
-          "diagram",
-          "graph",
-          "relationships"
-        ],
-        "inputSchema": {
-          "type": "object",
-          "properties": {
-            "operation": {
-              "type": "string",
-              "enum": [
-                "upstream",
-                "downstream",
-                "path",
-                "cycles",
-                "components"
-              ]
-            },
-            "id": {
-              "type": "string",
-              "description": "Starting node id, required for upstream, downstream and path; omit for cycles and components."
-            },
-            "target": {
-              "type": "string",
-              "description": "Destination node id, required only for path."
-            },
-            "maxDepth": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 10000,
-              "description": "Maximum number of edges from the starting node; omit for unlimited traversal. Only for upstream, downstream and path."
-            },
-            "revision": {
-              "type": "integer",
-              "minimum": 0,
-              "description": "Current revision; rejects a stale query or focus."
-            },
-            "startItem": {
-              "type": "integer",
-              "minimum": 1,
-              "description": "First result item, default 1. Continue from nextItem with the same query and revision."
-            },
-            "maxItems": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 100,
-              "description": "Result page size, default 50; reduced to fit the token budget."
-            },
-            "focus": {
-              "type": "boolean",
-              "description": "Mark all matching items and fade the rest, when 1–50 items match. Defaults to false."
-            }
-          },
-          "required": [
-            "operation"
-          ],
-          "additionalProperties": false
-        }
-      },
-      {
-        "name": "diagram_editStructure",
-        "displayName": "Edit Flowchart Structure",
-        "toolReferenceName": "diagramStructure",
-        "canBeReferencedInPrompt": true,
-        "icon": "$(git-pull-request)",
-        "userDescription": "Rename a flowchart node, insert one on an edge, reconnect an edge or move a node into a group",
-        "modelDescription": "diagram_editStructure: Apply one structural edit or an atomic operations batch to a Mermaid flowchart, preserving unrelated source, comments, links and the Markdown binding. rename changes a node's label while keeping its id and shape; insert splits an edge around a new node, keeping its label and remapping linkStyle; reconnect changes source or target to an existing node; move places one standalone declaration in an existing subgraph. Use exact node ids and edge ids from diagram_getState detail:items; an unambiguous edge alias such as A --> B also works. Supports ASCII letter/underscore ids with digits, simple one-edge statements and common node shapes. Chained/grouped edges, extended shape syntax and ambiguous group membership are refused without edits; use diagram_edit for those sources. Always pass the current revision and await the result. Add or remove nodes and edges, or use operations for an atomic batch. Removing a node removes its incident edges and code link.",
-        "tags": [
-          "diagram",
-          "mermaid",
-          "edit"
-        ],
-        "inputSchema": {
-          "type": "object",
-          "properties": {
-            "operation": {
-              "type": "string",
-              "enum": [
-                "rename",
-                "insert",
-                "reconnect",
-                "move",
-                "addNode",
-                "addEdge",
-                "removeNode",
-                "removeEdge"
-              ],
-              "description": "One structural operation, or omit in favor of operations for an atomic batch. addNode needs id/label; addEdge needs source/target and optional label; removeNode needs id and removes incident edges; removeEdge needs edge."
-            },
-            "revision": {
-              "type": "integer",
-              "minimum": 0,
-              "description": "Current revision from diagram_getState or the last drawing result."
-            },
-            "id": {
-              "type": "string",
-              "description": "Existing node id for rename, move or removeNode; new node id for insert or addNode."
-            },
-            "label": {
+            "topic": {
               "type": "string",
               "maxLength": 1000,
-              "description": "Plain node label for rename, insert or addNode; optional edge label for addEdge."
-            },
-            "edge": {
-              "type": "string",
-              "description": "Exact edge id or unambiguous alias for insert, reconnect or removeEdge."
-            },
-            "source": {
-              "type": "string",
-              "description": "Existing source node id for addEdge, or for reconnect the existing node that becomes the edge's source."
-            },
-            "target": {
-              "type": "string",
-              "description": "Existing target node id for addEdge, or for reconnect the existing node that becomes the edge's target."
-            },
-            "group": {
-              "type": "string",
-              "description": "Existing explicit subgraph id, required for move and optional for addNode."
-            },
-            "operations": {
-              "type": "array",
-              "minItems": 1,
-              "maxItems": 50,
-              "items": {
-                "type": "object",
-                "properties": {
-                  "operation": {
-                    "type": "string",
-                    "enum": [
-                      "rename",
-                      "insert",
-                      "reconnect",
-                      "move",
-                      "addNode",
-                      "addEdge",
-                      "removeNode",
-                      "removeEdge"
-                    ],
-                    "description": "Structural operation to apply at this point in the batch."
-                  },
-                  "id": {
-                    "type": "string",
-                    "description": "Existing node id for rename, move or removeNode; new node id for insert or addNode."
-                  },
-                  "label": {
-                    "type": "string",
-                    "maxLength": 1000,
-                    "description": "Plain node label for rename, insert or addNode; optional edge label for addEdge."
-                  },
-                  "edge": {
-                    "type": "string",
-                    "description": "Exact edge id or unambiguous alias for insert, reconnect or removeEdge."
-                  },
-                  "source": {
-                    "type": "string",
-                    "description": "Existing source node id for addEdge, or for reconnect the existing node that becomes the edge's source."
-                  },
-                  "target": {
-                    "type": "string",
-                    "description": "Existing target node id for addEdge, or for reconnect the existing node that becomes the edge's target."
-                  },
-                  "group": {
-                    "type": "string",
-                    "description": "Existing explicit subgraph id, required for move and optional for addNode."
-                  }
-                },
-                "required": [
-                  "operation"
-                ],
-                "additionalProperties": false
-              },
-              "description": "Apply operations in order with one revision check and render. Mutually exclusive with top-level operation and its fields. Existing edges use ids from the original drawing; new edges can use unique endpoint aliases."
+              "description": "e.g. \"flowchart\", \"sequence\", \"architecture\", \"echarts\" or \"echarts-bar\"."
             }
           },
-          "required": [
-            "revision"
-          ],
-          "additionalProperties": false
-        }
-      },
-      {
-        "name": "diagram_checkpoint",
-        "displayName": "Manage Diagram Checkpoints",
-        "toolReferenceName": "diagramCheckpoint",
-        "canBeReferencedInPrompt": true,
-        "icon": "$(history)",
-        "userDescription": "Save, compare and restore named diagram alternatives",
-        "modelDescription": "diagram_checkpoint: Save a named snapshot of the current source, settings and loaded chart data, list checkpoints, compare one with the current drawing or another checkpoint, restore it, or delete it. Saved checkpoints survive restart, up to 20 within 8 MB. Restoring never reloads files or commands and detaches Markdown binding; later changes affect the current drawing, not the saved checkpoint. Compare returns source/metadata changes and known structural changes, including modified node labels when captured labels are available. Pass current revision for mutations. Use id returned by save or list.",
-        "tags": [
-          "diagram"
-        ],
-        "inputSchema": {
-          "type": "object",
-          "properties": {
-            "action": {
-              "type": "string",
-              "enum": [
-                "save",
-                "list",
-                "compare",
-                "restore",
-                "delete"
-              ]
-            },
-            "name": {
-              "type": "string",
-              "maxLength": 100,
-              "description": "Name required for save."
-            },
-            "id": {
-              "type": "string",
-              "description": "Checkpoint id required for compare, restore or delete."
-            },
-            "otherId": {
-              "type": "string",
-              "description": "Compare with this checkpoint; omit to compare with the current drawing."
-            },
-            "revision": {
-              "type": "integer",
-              "minimum": 0,
-              "description": "Current revision from diagram_getState or the last change result."
-            }
-          },
-          "required": [
-            "action"
-          ],
-          "additionalProperties": false
-        }
-      },
-      {
-        "name": "diagram_draft",
-        "displayName": "Validate Diagram Draft",
-        "toolReferenceName": "diagramDraft",
-        "canBeReferencedInPrompt": true,
-        "icon": "$(check)",
-        "userDescription": "Render and check a draft before replacing the current drawing",
-        "modelDescription": "diagram_draft: validate renders proposed Mermaid or an ECharts option without executable JavaScript offscreen, leaving the current source, selection and editor draft untouched. Returns warnings and a draft id; image:true includes a PNG for models accepting images. preserveNodes and preservePaths check explicit Mermaid graph constraints; these do not prove semantic equivalence. apply accepts a validated id only while the original revision is current; generated chart edits retain normal styling-only restrictions. discard drops an id. Keeps the last four successful drafts for this extension session. Revalidate after any change. Never writes Markdown. Validation accepts exactly one of source, edits, operations or chartUpdate and checks the same application rules before issuing a draft id.",
-        "tags": [
-          "diagram"
-        ],
-        "inputSchema": {
-          "type": "object",
-          "properties": {
-            "action": {
-              "type": "string",
-              "enum": [
-                "validate",
-                "apply",
-                "discard"
-              ]
-            },
-            "source": {
-              "type": "string",
-              "maxLength": 1000000,
-              "description": "Complete source for validate; give exactly one of source, edits, operations or chartUpdate."
-            },
-            "language": {
-              "type": "string",
-              "enum": [
-                "mermaid",
-                "echarts"
-              ],
-              "description": "Only for full-source drafts; otherwise uses the current drawing language."
-            },
-            "title": {
-              "type": "string",
-              "maxLength": 200,
-              "description": "Optional title for source or edits. Chart updates take title inside chartUpdate."
-            },
-            "revision": {
-              "type": "integer",
-              "minimum": 0,
-              "description": "Current revision from diagram_getState or the last change result."
-            },
-            "id": {
-              "type": "string",
-              "description": "Draft id for apply or discard."
-            },
-            "image": {
-              "type": "boolean"
-            },
-            "preserveNodes": {
-              "type": "array",
-              "maxItems": 100,
-              "items": {
-                "type": "string"
-              },
-              "description": "Exact node ids that must exist in the validated Mermaid draft."
-            },
-            "preservePaths": {
-              "type": "array",
-              "maxItems": 100,
-              "items": {
-                "type": "object",
-                "properties": {
-                  "source": {
-                    "type": "string"
-                  },
-                  "target": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "source",
-                  "target"
-                ],
-                "additionalProperties": false
-              },
-              "description": "Node pairs that must remain connected by a directed path in the draft."
-            },
-            "edits": {
-              "type": "array",
-              "items": {
-                "type": "object",
-                "properties": {
-                  "oldText": {
-                    "type": "string",
-                    "description": "Exact text of the source, with its indentation and line breaks, that occurs once unless replaceAll is set."
-                  },
-                  "newText": {
-                    "type": "string",
-                    "description": "The replacement; empty deletes oldText."
-                  },
-                  "replaceAll": {
-                    "type": "boolean",
-                    "description": "true replaces every occurrence."
-                  }
-                },
-                "required": [
-                  "oldText",
-                  "newText"
-                ],
-                "additionalProperties": false
-              },
-              "maxItems": 50,
-              "description": "Validate exact replacements against current source without changing it. Give exactly one of source, edits, operations or chartUpdate."
-            },
-            "operations": {
-              "type": "array",
-              "minItems": 1,
-              "maxItems": 50,
-              "items": {
-                "type": "object",
-                "properties": {
-                  "operation": {
-                    "type": "string",
-                    "enum": [
-                      "rename",
-                      "insert",
-                      "reconnect",
-                      "move",
-                      "addNode",
-                      "addEdge",
-                      "removeNode",
-                      "removeEdge"
-                    ],
-                    "description": "Structural operation to apply at this point in the batch."
-                  },
-                  "id": {
-                    "type": "string",
-                    "description": "Existing node id for rename, move or removeNode; new node id for insert or addNode."
-                  },
-                  "label": {
-                    "type": "string",
-                    "maxLength": 1000,
-                    "description": "Plain node label for rename, insert or addNode; optional edge label for addEdge."
-                  },
-                  "edge": {
-                    "type": "string",
-                    "description": "Exact edge id or unambiguous alias for insert, reconnect or removeEdge."
-                  },
-                  "source": {
-                    "type": "string",
-                    "description": "Existing source node id for addEdge, or for reconnect the existing node that becomes the edge's source."
-                  },
-                  "target": {
-                    "type": "string",
-                    "description": "Existing target node id for addEdge, or for reconnect the existing node that becomes the edge's target."
-                  },
-                  "group": {
-                    "type": "string",
-                    "description": "Existing explicit subgraph id, required for move and optional for addNode."
-                  }
-                },
-                "required": [
-                  "operation"
-                ],
-                "additionalProperties": false
-              },
-              "description": "Validate a structural batch against the current flowchart. Give exactly one of source, edits, operations or chartUpdate."
-            },
-            "chartUpdate": {
-              "type": "object",
-              "properties": {
-                "type": {
-                  "type": "string",
-                  "enum": [
-                    "pie",
-                    "doughnut",
-                    "bar",
-                    "horizontalBar",
-                    "stackedBar",
-                    "line",
-                    "area",
-                    "stackedArea",
-                    "scatter",
-                    "histogram",
-                    "treemap",
-                    "sunburst",
-                    "sankey",
-                    "heatmap",
-                    "radar",
-                    "boxplot",
-                    "gauge",
-                    "funnel"
-                  ],
-                  "description": "New chart type; omit to keep it. Incompatible controls are cleared where required; settings such as max may remain unused until switching back. Use diagram_render for an arbitrary ECharts option."
-                },
-                "title": {
-                  "type": "string",
-                  "description": "New panel title; omit to keep it."
-                },
-                "labelColumn": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "type": "array",
-                      "items": {
-                        "type": "string"
-                      },
-                      "minItems": 1
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ],
-                  "description": "Column name, or names outermost first. Several give hierarchy levels, sankey endpoints, heatmap rows/columns, or category and series labels for bar/line/area charts. null restores inference. Omit for histograms."
-                },
-                "valueColumns": {
-                  "anyOf": [
-                    {
-                      "type": "array",
-                      "items": {
-                        "type": "string"
-                      },
-                      "minItems": 1
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ],
-                  "description": "Numeric column names for the series: two for XY scatter, one when dates supply x; pie/treemap/gauge use the first, boxplot and histogram use raw values. null restores inference."
-                },
-                "max": {
-                  "anyOf": [
-                    {
-                      "type": "number"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ],
-                  "description": "Top of a gauge scale or every radar axis, in parsed units (bytes for sizes, seconds for durations). null restores automatic bounds."
-                },
-                "aggregate": {
-                  "anyOf": [
-                    {
-                      "type": "string",
-                      "enum": [
-                        "sum",
-                        "mean",
-                        "count",
-                        "min",
-                        "max",
-                        "median"
-                      ]
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ],
-                  "description": "Combine rows with the same labels before sorting and limiting. \"count\" counts rows without a value column. Boxplot and histogram need raw rows. null removes grouping."
-                },
-                "sort": {
-                  "anyOf": [
-                    {
-                      "type": "string",
-                      "enum": [
-                        "ascending",
-                        "descending"
-                      ]
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ],
-                  "description": "Sort by the first value, totals for stacked charts or series split by a second label column, or medians for boxplots. Time axes stay chronological. null removes explicit value sorting. Unsupported for histograms."
-                },
-                "limit": {
-                  "anyOf": [
-                    {
-                      "type": "integer",
-                      "minimum": 1
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ],
-                  "description": "Keep this many rows after sorting; pie/doughnut combine remaining positive values as \"Other\". null removes the limit. Unsupported for histograms, boxplots and bar/line/area charts split into series by a second label column."
-                },
-                "bins": {
-                  "anyOf": [
-                    {
-                      "type": "integer",
-                      "minimum": 1,
-                      "maximum": 200
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ],
-                  "description": "Number of equal-width histogram bins, from 1 to 200. null restores automatic binning."
-                },
-                "facetColumn": {
-                  "anyOf": [
-                    {
-                      "type": "string",
-                      "minLength": 1
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ],
-                  "description": "Split bar/line/area/scatter/histogram charts into a panel per value of this column (at most 12), after filtering. Aggregate, sort and limit apply per panel. null removes facets."
-                },
-                "facetColumns": {
-                  "anyOf": [
-                    {
-                      "type": "integer",
-                      "minimum": 1,
-                      "maximum": 4
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ],
-                  "description": "Facet panels per row, from 1 to 4; layout may increase this to keep panels readable. null restores automatic layout."
-                },
-                "facetScales": {
-                  "anyOf": [
-                    {
-                      "type": "string",
-                      "enum": [
-                        "shared",
-                        "independent"
-                      ]
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ],
-                  "description": "\"shared\" compares facet panels on the same axis ranges; \"independent\" fits each panel separately. null restores shared scales."
-                },
-                "filters": {
-                  "anyOf": [
-                    {
-                      "type": "array",
-                      "maxItems": 50,
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "column": {
-                            "type": "string",
-                            "minLength": 1,
-                            "description": "Exact parsed column name from diagram_inspectData."
-                          },
-                          "op": {
-                            "type": "string",
-                            "enum": [
-                              "eq",
-                              "neq",
-                              "lt",
-                              "lte",
-                              "gt",
-                              "gte",
-                              "contains"
-                            ],
-                            "description": "eq/neq compare exact values and types; lt/lte/gt/gte compare numeric cells; contains matches text case-sensitively."
-                          },
-                          "value": {
-                            "anyOf": [
-                              {
-                                "type": "string"
-                              },
-                              {
-                                "type": "number"
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ],
-                            "description": "Comparison value: a number in parsed units, a string, or null to match missing cells with eq/neq."
-                          }
-                        },
-                        "required": [
-                          "column",
-                          "op",
-                          "value"
-                        ],
-                        "additionalProperties": false
-                      }
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ],
-                  "description": "Keep rows matching all filters before grouping, sorting and limiting. This replaces the entire filter list; null or [] clears it. Numeric comparisons use parsed units (bytes or seconds)."
-                }
-              },
-              "additionalProperties": false,
-              "description": "Validate generated chart settings using loaded data and retained styling. Uses the outer revision; accepts the same settings as diagram_updateChart."
-            }
-          },
-          "required": [
-            "action"
-          ],
-          "additionalProperties": false
-        }
-      },
-      {
-        "name": "diagram_evidence",
-        "displayName": "Manage Diagram Evidence",
-        "toolReferenceName": "diagramEvidence",
-        "canBeReferencedInPrompt": true,
-        "icon": "$(references)",
-        "userDescription": "Attach source locations and assumptions to diagram items and check freshness",
-        "modelDescription": "diagram_evidence: set attaches evidence to exact diagram item ids, replacing those items' earlier evidence and keeping the rest, capturing file hashes including unsaved edits; attach only sources you have read and distinguish assumptions explicitly. read returns paged attachments, current source snippets and unchanged/changed/missing/unavailable file status. A changed file indicates possible staleness, not a disproved claim; attached evidence is agent-provided, not automatically verified. clear removes selected ids or all attachments. Workspace files only, using the same access boundaries and trust confirmation as workspace reading. set and clear require revision. No diagram source or workspace file is changed. Each call reads at most eight files of up to 1 MiB; source ranges are at most 100 lines. Reads also report rangeStatus for the cited lines and itemStatus for changed/missing identities. Item review flags persist until set reaffirms the evidence; chart source changes conservatively flag attached items.",
-        "tags": [
-          "diagram"
-        ],
-        "inputSchema": {
-          "type": "object",
-          "properties": {
-            "action": {
-              "type": "string",
-              "enum": [
-                "set",
-                "read",
-                "clear"
-              ]
-            },
-            "revision": {
-              "type": "integer",
-              "minimum": 0,
-              "description": "Current revision from diagram_getState or the last change result."
-            },
-            "items": {
-              "type": "array",
-              "minItems": 1,
-              "maxItems": 50,
-              "items": {
-                "type": "object",
-                "properties": {
-                  "id": {
-                    "type": "string",
-                    "maxLength": 1000,
-                    "description": "Exact item id from diagram_getState with detail:\"items\"."
-                  },
-                  "locations": {
-                    "type": "array",
-                    "maxItems": 4,
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "file": {
-                          "type": "string",
-                          "maxLength": 4096,
-                          "description": "Workspace file, absolute or relative to the first workspace folder."
-                        },
-                        "startLine": {
-                          "type": "integer",
-                          "minimum": 1,
-                          "maximum": 10000000,
-                          "description": "First cited line, from 1; defaults to 1."
-                        },
-                        "endLine": {
-                          "type": "integer",
-                          "minimum": 1,
-                          "maximum": 10000000,
-                          "description": "Last cited line; defaults to startLine. A range has at most 100 lines."
-                        }
-                      },
-                      "required": [
-                        "file"
-                      ],
-                      "additionalProperties": false
-                    }
-                  },
-                  "assumptions": {
-                    "type": "array",
-                    "maxItems": 8,
-                    "items": {
-                      "type": "string",
-                      "maxLength": 500
-                    }
-                  }
-                },
-                "required": [
-                  "id"
-                ],
-                "additionalProperties": false
-              },
-              "description": "For set. Each item's locations and assumptions replace any it had."
-            },
-            "ids": {
-              "type": "array",
-              "minItems": 1,
-              "maxItems": 50,
-              "items": {
-                "type": "string",
-                "maxLength": 1000
-              },
-              "description": "Exact evidence item ids for read or clear; omit for all."
-            },
-            "startItem": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 50,
-              "description": "First item to read, from 1; continue at nextItem."
-            },
-            "maxItems": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 10,
-              "description": "Items per read; defaults to 5."
-            }
-          },
-          "required": [
-            "action"
-          ],
           "additionalProperties": false
         }
       }
@@ -2092,18 +318,6 @@
         "title": "Export…",
         "category": "Diagram",
         "icon": "$(export)"
-      },
-      {
-        "command": "diagram.chartOptions",
-        "title": "Chart Options…",
-        "category": "Diagram",
-        "icon": "$(gear)",
-        "enablement": "diagram.chartOptionsAvailable"
-      },
-      {
-        "command": "diagram.highlightPath",
-        "title": "Highlight Path",
-        "category": "Diagram"
       },
       {
         "command": "diagram.clearSelection",
@@ -2127,10 +341,6 @@
           "when": "diagram.hasDiagram"
         },
         {
-          "command": "diagram.highlightPath",
-          "when": "false"
-        },
-        {
           "command": "diagram.clearSelection",
           "when": "false"
         }
@@ -2147,19 +357,9 @@
           "command": "diagram.export",
           "when": "activeWebviewPanelId == diagram.panel && diagram.hasDiagram",
           "group": "navigation"
-        },
-        {
-          "command": "diagram.chartOptions",
-          "when": "activeWebviewPanelId == diagram.panel && diagram.chartOptionsAvailable",
-          "group": "navigation@2"
         }
       ],
       "webview/context": [
-        {
-          "command": "diagram.highlightPath",
-          "when": "webviewId == diagram.panel && webviewSection == drawing && diagram.canHighlightPath",
-          "group": "0_selection@1"
-        },
         {
           "command": "diagram.clearSelection",
           "when": "webviewId == diagram.panel && diagram.canClearSelection",
@@ -2238,10 +438,6 @@
     "flowchart",
     "sequence diagram",
     "visualization",
-    "data visualization",
-    "plot",
-    "csv",
-    "json",
     "markdown",
     "chat",
     "copilot",

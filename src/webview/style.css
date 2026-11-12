@@ -139,22 +139,8 @@ button.link {
   color: var(--vscode-textLink-foreground);
 }
 
-/*
- * The handle that drags the drawing out of the panel as an image. Styled like the header's buttons
- * but is none: it can only be dragged, which a button would promise the keyboard it could do.
- */
-.drag-out {
-  display: flex;
-  align-items: center;
-  padding: 3px 8px;
-  border: 1px solid;
-  border-radius: 2px;
-  cursor: grab;
-}
-
 /* Editor actions use the workbench toolbar tokens, leaving primary emphasis to Apply/Send. */
-header button,
-.drag-out {
+header button {
   min-height: 26px;
   box-sizing: border-box;
   background: transparent;
@@ -162,25 +148,18 @@ header button,
   border-color: var(--vscode-contrastBorder, transparent);
 }
 
-header button:enabled:hover,
-.drag-out:hover {
+header button:enabled:hover {
   background: var(--vscode-toolbar-hoverBackground);
 }
 
 /* Dashed in high contrast, as VS Code's toolbars are, and not over the focus ring. */
-header button:enabled:hover:not(:focus-visible),
-.drag-out:hover {
+header button:enabled:hover:not(:focus-visible) {
   outline: 1px dashed var(--vscode-toolbar-hoverOutline, transparent);
   outline-offset: -1px;
 }
 
-header button:enabled:active,
-.drag-out:active {
+header button:enabled:active {
   background: var(--vscode-toolbar-activeBackground);
-}
-
-.drag-out:active {
-  cursor: grabbing;
 }
 
 button.link:enabled:hover {
@@ -188,9 +167,8 @@ button.link:enabled:hover {
   text-decoration: underline;
 }
 
-/* The source view shows no drawing to zoom or drag out. Still taking their space, so that the
-   header keeps its layout across views. */
-body:has(#panes.view-source) :is(#zoom, #drag-out) {
+/* The source view shows no drawing to zoom; keep the header's layout across views. */
+body:has(#panes.view-source) #zoom {
   visibility: hidden;
 }
 
@@ -258,29 +236,6 @@ body:has(#panes.view-source) :is(#zoom, #drag-out) {
   margin: 0;
   padding: 0;
   border: 0;
-}
-
-#pick {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 6px 12px;
-  background: var(--vscode-inputValidation-infoBackground);
-  border-bottom: 1px solid var(--vscode-inputValidation-infoBorder);
-}
-
-#pick-prompt {
-  /* Wraps beside the buttons, until too narrow for them, which then go below it rather than
-     stack. */
-  flex: 1 1 12em;
-  font-weight: 600;
-}
-
-#pick .actions {
-  flex-wrap: nowrap;
-  margin-left: auto;
 }
 
 /* The colors marks read in, from the theme: the step being walked through, something wrong,
@@ -404,11 +359,6 @@ body:has(#panes.view-source) :is(#zoom, #drag-out) {
   #panes.view-split #editor {
     max-height: calc(100% - min(120px, 50%));
     overflow-y: auto;
-  }
-
-  /* Chart Options take less of a panel that also shows the source above the drawing. */
-  body:has(#panes.view-split) #chart-options {
-    max-height: 30vh;
   }
 }
 
@@ -539,9 +489,8 @@ select:focus {
   cursor: grabbing;
 }
 
-/* Nodes that a click acts on, rather than selects: while picking, in click-to-ask mode, and those
-   that link to a place in the code or a URL. */
-#canvas:is(.picking, .click-to-ask) #diagram .diagram-node:is(:hover, :focus-visible),
+/* Nodes that a click acts on, rather than selects: in click-to-ask mode, and those that link. */
+#canvas.click-to-ask #diagram .diagram-node:is(:hover, :focus-visible),
 #diagram .diagram-linked:is(:hover, :focus-visible) {
   filter: drop-shadow(0 0 2px var(--vscode-textLink-activeForeground))
     drop-shadow(0 0 6px var(--vscode-textLink-activeForeground));
@@ -654,81 +603,6 @@ select:focus {
 
 #ask-form button {
   margin-left: auto;
-}
-
-#chart-options {
-  container-type: inline-size;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--vscode-panel-border);
-  max-height: 45vh;
-  overflow: auto;
-  flex-shrink: 0;
-}
-
-.chart-options-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.chart-options-fields {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(160px, 100%), 1fr));
-  gap: 10px;
-  border: 0;
-  padding: 0;
-  margin: 8px 0;
-  min-width: 0;
-}
-
-.chart-options-fields label {
-  display: block;
-  margin-bottom: 4px;
-}
-
-#chart-options :is(select, input[type="text"], input[type="number"]) {
-  width: 100%;
-  min-width: 0;
-  padding: 3px 5px;
-}
-
-.chart-column-row {
-  display: flex;
-  gap: 4px;
-  margin-bottom: 4px;
-}
-
-.chart-filter-field {
-  grid-column: 1 / -1;
-}
-
-.chart-filter-row {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(70px, 1fr)) auto;
-  gap: 4px;
-  margin-bottom: 4px;
-}
-
-/* Two lines in a narrow form, the remove button at the end of the first rather than a line of
-   its own as wide as a field. */
-@container (max-width: 450px) {
-  .chart-filter-row {
-    grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
-  }
-
-  .chart-filter-row > button {
-    grid-area: 1 / 3;
-  }
-}
-
-.chart-options-error {
-  color: var(--vscode-errorForeground);
-  white-space: pre-wrap;
-}
-
-#chart-options form > label {
-  display: block;
-  margin: 8px 0;
 }
 
 /* Relationship hit targets stay invisible when selected or annotated. */

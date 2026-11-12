@@ -34,50 +34,6 @@ suite("webview annotations", function () {
     );
   });
 
-  test("steps through explanations with keyboard controls while preserving selection", async () => {
-    await draw({ source: "flowchart LR\n A --> B" });
-    assert.deepStrictEqual(
-      await evaluate(`(async () => {
-      document.querySelector('[data-diagram-id="A"][tabindex]').dispatchEvent(new MouseEvent('click', {bubbles:true}));
-      const selected = document.getElementById("selection-label").textContent;
-      receive({type: "annotate", marks: [], dim: false, step: 0, steps: [
-        {text: "Request enters", marks: [{id: "A", kind: "current"}], dim: true},
-        {text: "Service fails", marks: [{id: "B", kind: "problem", text: "Timeout"}], dim: false}
-      ]});
-      ${UNTIL}
-      await until(() => document.getElementById("explanation-heading").textContent === "Step 1 of 2",
-        "the first step");
-      const next = document.getElementById("explanation-next");
-      const previous = document.getElementById("explanation-previous");
-      next.focus(); next.click();
-      const second = {
-        caption: document.getElementById("explanation-caption").textContent,
-        heading: document.getElementById("explanation-heading").textContent,
-        marked: [...document.querySelectorAll('#diagram .diagram-marked')].map(node => node.dataset.diagramId),
-        nextDisabled: next.getAttribute("aria-disabled"),
-        focused: document.activeElement === next,
-        selection: document.getElementById("selection-label").textContent === selected
-      };
-      next.click();
-      const stayed = document.getElementById("explanation-heading").textContent;
-      previous.click();
-      return {second, stayed, first: document.getElementById("explanation-caption").textContent};
-    })()`),
-      {
-        second: {
-          caption: "Service fails",
-          heading: "Step 2 of 2",
-          marked: ["B"],
-          nextDisabled: "true",
-          focused: true,
-          selection: true,
-        },
-        stayed: "Step 2 of 2",
-        first: "Request enters",
-      },
-    );
-  });
-
   test("focuses offscreen Mermaid items without replacing a draft or selecting them", async () => {
     const source = `flowchart TD\n${Array.from({ length: 35 }, (_, i) => `A${i} --> A${i + 1}`).join("\n")}`;
     await draw({ source });
@@ -139,14 +95,11 @@ suite("webview annotations", function () {
     );
   });
 
-  test("keeps callouts legible in light and dark themes and exposes native keyboard controls", async () => {
+  test("keeps callouts legible in light and dark themes", async () => {
     await draw({ source: "flowchart LR\n A --> B" });
     assert.deepStrictEqual(
       await evaluate(`(async () => {
-      receive({type: "annotate", marks: [], dim: false, steps: [
-        {text: "First", marks: [{id:"A",kind:"info",text:"A callout"}],dim:false},
-        {text: "Second", marks: [],dim:false}
-      ]});
+      receive({type: "annotate", marks: [{id:"A",kind:"info",text:"A callout"}], dim: false});
       ${UNTIL}
       await until(() => document.querySelector('.explanation-callout')?.textContent, "the callout");
       const style = document.body.style;
@@ -159,22 +112,13 @@ suite("webview annotations", function () {
           const colors = getComputedStyle(document.querySelector('.explanation-callout'));
           results.push([colors.backgroundColor, colors.color]);
         }
-        const next = document.getElementById("explanation-next");
-        next.focus();
-        return {colors: results, native: next.tagName === "BUTTON" && next.tabIndex === 0,
-          focused: document.activeElement === next,
-          heading: document.getElementById("explanation-heading").textContent};
+        return results;
       } finally { keys.forEach((key,index) => saved[index] ? style.setProperty(key,saved[index]) : style.removeProperty(key)); }
     })()`),
-      {
-        colors: [
-          ["rgb(243, 243, 243)", "rgb(32, 32, 32)"],
-          ["rgb(37, 37, 38)", "rgb(204, 204, 204)"],
-        ],
-        native: true,
-        focused: true,
-        heading: "Step 1 of 2",
-      },
+      [
+        ["rgb(243, 243, 243)", "rgb(32, 32, 32)"],
+        ["rgb(37, 37, 38)", "rgb(204, 204, 204)"],
+      ],
     );
   });
 

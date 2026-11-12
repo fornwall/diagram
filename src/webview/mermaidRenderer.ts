@@ -31,13 +31,6 @@ import {
 import { diagramHeader } from "./mermaidLayout";
 import { type DiagramDb, findNodes, NOTHING_DRAWN, WITH_DATABASE } from "./mermaidNodes";
 import {
-  type DrawingWidth,
-  drawingWidth,
-  fittingZoom,
-  readabilityWarnings,
-  tooWide,
-} from "./mermaidQuality";
-import {
   colorLabelsOnBlocks,
   drawnAtWidth,
   elementConfig,
@@ -48,7 +41,6 @@ import {
   withOwnThemeVariables,
 } from "./mermaidTheme";
 import { arrowDirection, nearestInDirection, type Point } from "./navigation";
-import { shortestPath } from "./relationships";
 import {
   type ItemClickHandler,
   type Renderer,
@@ -98,7 +90,6 @@ const RELAYOUT_THRESHOLD = 16;
 export const RELAYOUT_DELAY = 200;
 
 /** The diagrams whose edges lead the way they point: those drawn as flowcharts, and state diagrams. */
-const PATH_DIAGRAMS = /^(?:flowchart|swimlane$|agentflow$|stateDiagram$)/;
 
 /** Mermaid's default limit: it draws a longer source as an error message instead. */
 const MAX_TEXT_SIZE = 50_000;
@@ -547,12 +538,8 @@ export class MermaidRenderer implements Renderer {
   /** The last image, and what it was drawn from, which an image of the same takes again. */
   private image: { from: string; image: DiagramImage } | undefined;
   private diagramType: string | undefined;
-  /** How the shown drawing reads, as measured when it was drawn. */
-  private readability: string[] = [];
   /** Whether the diagram shown sets its own width, rather than the panel sizing it. */
   private ownWidth = false;
-  /** How wide the drawing shown is, which the panel's width can be too narrow for. */
-  private measured: DrawingWidth | undefined;
   /** The size of most of the text of the drawing shown, at actual size. */
   private textSize: number | undefined;
   /** The width of the container that the drawing was laid out in. */
@@ -813,25 +800,12 @@ export class MermaidRenderer implements Renderer {
       const db = WITH_DATABASE.has(result.diagramType) ? parsed : undefined;
       const svg = await layOut(result.svg, result.diagramType, text, colors, async () => db);
       // Measured in the layout container, as the canvas may be hidden, as by the Source view.
-      let readability: string[] = [];
-      let size: number | undefined;
-      let measured: DrawingWidth | undefined;
-      try {
-        size = textSize(svg);
-        const facts = { type: result.diagramType, source, db: parsed };
-        readability = readabilityWarnings(svg, facts);
-        measured = drawingWidth(svg, facts, size);
-      } catch (error) {
-        console.error(error);
-      }
-      return { result, db, svg, readability, size, measured };
+      return { result, db, svg, size: textSize(svg) };
     };
-    const { result, db, svg, readability, size, measured } = await drawing().catch(
-      (error: unknown) => {
-        container.style.width = shownWidth;
-        throw error;
-      },
-    );
+    const { result, db, svg, size } = await drawing().catch((error: unknown) => {
+      container.style.width = shownWidth;
+      throw error;
+    });
     if (width > 0) this.layoutWidth = width;
     this.drawnFrom = drawnFrom;
     this.hideTooltip();
@@ -851,8 +825,6 @@ export class MermaidRenderer implements Renderer {
     this.diagram.hidden = false;
     this.displayedSource = source;
     this.diagramType = result.diagramType;
-    this.readability = readability;
-    this.measured = measured;
     this.ownWidth = ownWidth;
     this.textSize = size;
     this.prepareSvg(svg, id, db);
@@ -1115,32 +1087,8 @@ export class MermaidRenderer implements Renderer {
     return next;
   }
 
-  get supportsPaths(): boolean {
-    return PATH_DIAGRAMS.test(this.diagramType ?? "");
-  }
-
-  findPath(from: string, to: string): DiagramNode[] | undefined {
-    return this.supportsPaths ? shortestPath(this.drawn.nodes, from, to) : undefined;
-  }
-
   drawnNodes(): DiagramNode[] {
     return this.drawn.nodes;
-  }
-
-  /** What the drawing warns of, as measured when drawn, and against the panel's width now. */
-  warnings(): string[] {
-    // A hidden tab's page has the default size of a frame, also when it is told that the tab is
-    // shown before it has the tab's size, under load: the panel's is not known. The Source view
-    // hides the canvas, and a hidden tab's has no size: take the width the drawing was laid out at.
-    // The height that fitting the drawing goes by is then not known either.
-    const frame = innerWidth === 300 && innerHeight === 150;
-    const room = this.contentSize();
-    const roomWidth = frame ? 0 : room.width > 0 ? room.width : this.layoutWidth;
-    const roomHeight = frame || room.width <= 0 ? 0 : room.height;
-    const wide =
-      this.measured &&
-      tooWide(this.measured, { roomWidth, roomHeight, width: document.body.clientWidth });
-    return wide ? [wide, ...this.readability] : this.readability;
   }
 
   get hasWebLinks(): boolean {
@@ -1371,7 +1319,13 @@ export class MermaidRenderer implements Renderer {
   ): number | undefined {
     if (!natural?.width || !natural.height) return 1;
     if (width <= 0 || height <= 0) return undefined;
-    return fittingZoom(natural, { width, height }, this.textSize);
+    // Fit the width, but keep text readable (9px) and don't shrink below 60% to fit the height.
+    const readable = this.textSize ? 9 / this.textSize : 0;
+    return Math.min(
+      1,
+      Math.max(width / natural.width, readable),
+      Math.max(height / natural.height, 0.6),
+    );
   }
 
   /**

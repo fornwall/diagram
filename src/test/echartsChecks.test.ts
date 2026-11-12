@@ -1,11 +1,10 @@
 import * as assert from "node:assert";
 import { init } from "echarts";
 import type * as ECharts from "echarts/core";
-import { CHART_TYPES, type ChartType } from "../chartSpec";
 import { capWarnings, dataWarnings, layoutWarnings } from "../webview/echartsChecks";
 import { disableAnimation } from "../webview/echartsLayout";
 import { buildEChartsTheme } from "../webview/echartsTheme";
-import { bars, builtOption, layout, type Option } from "./echartsModel";
+import { bars, layout, type Option } from "./echartsModel";
 import { testColors } from "./themeColors";
 
 /**
@@ -30,43 +29,12 @@ function warningsOf(option: Option, { width = 800, height = 500 } = {}): string[
 }
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const DEPARTMENTS = [
-  "Engineering",
-  "Marketing",
-  "Sales",
-  "Customer Support",
-  "Human Resources",
-  "Finance",
-  "Legal",
-  "Operations",
-  "Research",
-  "Product Management",
-  "Design",
-  "Quality Assurance",
-  "Information Technology",
-  "Facilities",
-  "Procurement",
-  "Business Development",
-  "Public Relations",
-  "Data Science",
-  "Security",
-  "Training",
-];
 /** The slices of a pie: a few large, and many small. */
 const slices = (count: number) =>
   Array.from({ length: count }, (_, index) => ({
     name: `Slice number ${index + 1}`,
     value: index < 3 ? 100 : 1 + (index % 3),
   }));
-const LONG_LEAVES = {
-  type: "tree",
-  data: [
-    {
-      name: "root",
-      children: [{ name: "a leaf with a long name that goes on" }, { name: "another leaf" }],
-    },
-  ],
-};
 
 suite("echartsChecks", function () {
   // Each test draws dozens of charts, which takes a while on a busy machine.
@@ -354,35 +322,6 @@ suite("echartsChecks", function () {
       for (const size of sizes) {
         assert.deepStrictEqual(warningsOf(option, size), [], JSON.stringify(option).slice(0, 80));
       }
-    }
-  });
-
-  test("says nothing of the charts that diagram_chart makes", () => {
-    const table =
-      "region,product,sales,cost\nNorth,Widgets,120,80\nSouth,Widgets,90,60\n" +
-      "East,Gadgets,150,100\nWest,Gizmos,70,40\nNorth,Gadgets,60,30\nCentral,Gizmos,30,20";
-    const daily = `day,visits,signups\n${Array.from(
-      { length: 120 },
-      (_, index) =>
-        `${new Date(Date.UTC(2024, 0, 1 + index)).toISOString().slice(0, 10)},${100 + ((index * 37) % 50)},${index % 7}`,
-    ).join("\n")}`;
-    const levels = new Set<ChartType>(["sankey", "treemap", "sunburst", "heatmap"]);
-    for (const type of CHART_TYPES) {
-      const labelColumn = levels.has(type)
-        ? ["region", "product"]
-        : type === "histogram"
-          ? undefined
-          : "region";
-      for (const size of [{}, { width: 520, height: 420 }]) {
-        const option = builtOption(
-          { type, data: "unused", ...(labelColumn && { labelColumn }) },
-          table,
-        );
-        assert.deepStrictEqual(warningsOf(option, size), [], type);
-      }
-    }
-    for (const type of ["line", "area", "bar", "scatter", "stackedArea"] as const) {
-      assert.deepStrictEqual(warningsOf(builtOption({ type, data: "unused" }, daily)), [], type);
     }
   });
 
@@ -871,27 +810,6 @@ suite("echartsChecks", function () {
     }
   });
 
-  test("breaks the labels of a funnel onto lines where they are wider than the room beside it", () => {
-    const regions = ["North America", "Europe", "Asia Pacific", "Latin America"];
-    regions.push("Middle East and Africa");
-    const spec = { type: "funnel", data: "unused", labelColumn: "region" } as const;
-    const table = (names: string[], top: number) =>
-      `region,sales\n${names.map((name, index) => `${name},${top - index * 25}`).join("\n")}`;
-    const funnel = builtOption(spec, table(regions, 150));
-    for (const width of [300, 330, 420]) {
-      assert.deepStrictEqual(warningsOf(funnel, { width, height: 600 }), [], `${width}`);
-    }
-    // Cut short where they would not fit across the height of their stage on lines.
-    const stages = Array.from({ length: 30 }, (_, index) => `Middle East and Africa ${index}`);
-    const crowded = builtOption(spec, table(stages, 1000));
-    const size = { width: 330, height: 600 };
-    const overflows = layout(crowded, size).series[0].data.map(
-      (item: Option) => item.label?.overflow,
-    );
-    assert.ok(overflows.includes("truncate") && !overflows.includes("break"), String(overflows));
-    assert.deepStrictEqual(warningsOf(crowded, size), []);
-  });
-
   test("cuts short the label of a funnel beside the corner of its top or bottom stage", () => {
     const data = [
       { name: "Website visits from search and social campaigns", value: 1000 },
@@ -907,103 +825,6 @@ suite("echartsChecks", function () {
         assert.deepStrictEqual(warningsOf(option, size), [], `${position} ${sort}`);
       }
     }
-  });
-
-  test("tells of category labels that ECharts leaves out, or cuts short alike", () => {
-    const departments = (axis: "xAxis" | "yAxis", count = 20): Option => {
-      const data = DEPARTMENTS.slice(0, count);
-      return {
-        [axis]: { type: "category", data },
-        [axis === "xAxis" ? "yAxis" : "xAxis"]: {},
-        series: [{ type: "bar", data: data.map((_, index) => index) }],
-      };
-    };
-    const narrow = { width: 400, height: 500 };
-    assert.deepStrictEqual(warningsOf(departments("xAxis"), narrow), [
-      'xAxis shows only 10 of its 20 category labels at the panel\'s width of 400 pixels, leaving out the others for lack of room: put the categories on yAxis as a horizontal bar chart, shorten the names, or add a "dataZoom" to show fewer at a time.',
-    ]);
-    assert.deepStrictEqual(warningsOf(departments("yAxis"), narrow), []);
-    assert.deepStrictEqual(warningsOf(departments("yAxis"), { width: 400, height: 200 }), [
-      'yAxis shows only 10 of its 20 category labels at the panel\'s height of 200 pixels, leaving out the others for lack of room: show fewer categories, such as the largest and an "Other", or add a "dataZoom" on yAxis to show fewer at a time.',
-    ]);
-    // Also of an axis whose shown labels the layout spaces itself, as of an inverse one.
-    const inverse = departments("yAxis");
-    inverse.yAxis = { ...inverse.yAxis, inverse: true };
-    assert.ok(layout(inverse, { width: 400, height: 200 }).yAxis.axisLabel.interval >= 1);
-    assert.match(
-      warningsOf(inverse, { width: 400, height: 200 })[0] ?? "",
-      /^yAxis shows only \d+ of its 20 category labels at the panel's height of 200 pixels/,
-    );
-    // Labels in a sequence, of which a reader can tell those left out.
-    const days = Array.from({ length: 90 }, (_, index) =>
-      new Date(Date.UTC(2024, 0, 1 + index)).toISOString().slice(0, 10),
-    );
-    for (const data of [
-      days,
-      MONTHS.map((month) => `${month} 2024`),
-      days.map((_, index) => `Q${(index % 4) + 1} ${2000 + index}`),
-    ]) {
-      assert.deepStrictEqual(
-        warningsOf(
-          { xAxis: { data }, yAxis: {}, series: [{ type: "line", data: data.map(() => 1) }] },
-          narrow,
-        ),
-        [],
-      );
-    }
-    // Nor an axis that chooses which labels to show, which the panel turns to fit.
-    const chosen = departments("xAxis");
-    chosen.xAxis = { ...chosen.xAxis, axisLabel: { interval: 1 } };
-    assert.deepStrictEqual(warningsOf(chosen, narrow), []);
-    // But of one that shows every label where they run into each other, however turned.
-    chosen.xAxis = { ...chosen.xAxis, axisLabel: { interval: 0 } };
-    assert.deepStrictEqual(warningsOf(chosen, narrow), []);
-    assert.deepStrictEqual(warningsOf(chosen, { width: 300, height: 500 }), [
-      'xAxis draws its 20 category labels over each other at the panel\'s width of 300 pixels: leave "interval" out of xAxis.axisLabel, for the panel to turn them or leave some out, or shorten the names.',
-    ]);
-    chosen.xAxis = { ...chosen.xAxis, axisLabel: { interval: 0, rotate: 0 } };
-    assert.deepStrictEqual(warningsOf(chosen, narrow), [
-      'xAxis draws its 20 category labels over each other at the panel\'s width of 400 pixels: leave "interval" out of xAxis.axisLabel, for the panel to turn them or leave some out, or shorten the names.',
-    ]);
-    // The same of the axes of several facets is told once.
-    const facets = builtOption(
-      { type: "bar", data: "unused", labelColumn: "department", facetColumn: "region" },
-      `region,department,staff\n${["North", "South", "East", "West"].flatMap((region) => DEPARTMENTS.map((department, index) => `${region},${department},${index}`)).join("\n")}`,
-    );
-    assert.deepStrictEqual(warningsOf(facets, { width: 800, height: 600 }), [
-      'xAxis[0], xAxis[1] and 2 more axes show only 10 of their 20 category labels each at the panel\'s width of 800 pixels, leaving out the others for lack of room: put the categories on yAxis as a horizontal bar chart, shorten the names, or add a "dataZoom" to show fewer at a time.',
-    ]);
-    const regions = ["North America Region East", "North America Region West", "Europe"];
-    const bars = (data: string[]) => ({
-      yAxis: { type: "category", data },
-      xAxis: {},
-      series: [{ type: "bar", data: data.map((_, index) => index) }],
-    });
-    // Labels that the panel puts onto lines, or tells apart by what follows a start they share.
-    assert.deepStrictEqual(warningsOf(bars(regions), narrow), []);
-    const centers = Array.from({ length: 20 }, (_, index) => `North America Region ${index}`);
-    assert.deepStrictEqual(warningsOf(bars(centers), narrow), []);
-    // Too many to go onto lines, and sharing no start.
-    regions.push(...DEPARTMENTS.slice(0, 17));
-    assert.deepStrictEqual(warningsOf(bars(regions), narrow), [
-      'yAxis cuts its category labels short to fit, leaving 2 of them alike, such as "North America Regi...": use shorter names that differ at the start.',
-    ]);
-  });
-
-  test("tells of texts cut off at the edge of the chart", () => {
-    // A tree placed by the option, as the panel leaves room for the labels of one it places.
-    const placed = { ...LONG_LEAVES, left: 40, right: 40 };
-    assert.deepStrictEqual(warningsOf({ series: [placed] }, { width: 400, height: 400 }), [
-      'series[0] has 2 texts, such as "a leaf with a long name that goes on", cut off at the right edge of the chart: leave room for them with the series\' "left", "right", "top" or "bottom", or shorten them.',
-    ]);
-    assert.deepStrictEqual(warningsOf({ series: [LONG_LEAVES] }, { width: 400, height: 400 }), []);
-    // A label of a width and line height is drawn in a box as wide, its text within it: of a
-    // tree, the root's ends at its node, near the left edge, and the leaves' start at theirs.
-    const spaced = { ...LONG_LEAVES, label: { lineHeight: 16 } };
-    assert.deepStrictEqual(warningsOf({ series: [spaced] }), []);
-    assert.deepStrictEqual(warningsOf({ title: { text: "Sales", left: 780 }, ...bars() }), [
-      'title has the text "Sales" cut off at the right edge of the chart: place it within the chart with its "left", "right", "top" or "bottom", or shorten it.',
-    ]);
   });
 
   test("leaves room for the labels at the ends of mark lines, and for a pin at the largest value", () => {
@@ -1045,94 +866,6 @@ suite("echartsChecks", function () {
       );
       assert.deepStrictEqual(warningsOf({ series: [{ type, data }] }), [], type);
     }
-  });
-
-  test("tells of a legend that pages its entries, or that covers other texts", () => {
-    const lines = (count: number) =>
-      Array.from({ length: count }, (_, index) => ({
-        name: `Product line ${index + 1}`,
-        type: "line",
-        data: [1, 2, 3].map((value) => value * index),
-      }));
-    const chart = (series: Option[]) => ({
-      xAxis: { type: "category", data: ["a", "b", "c"] },
-      yAxis: {},
-      series,
-    });
-    assert.deepStrictEqual(warningsOf(chart(lines(5))), []);
-    // A legend that the panel places wraps into a few rows before it pages.
-    assert.deepStrictEqual(warningsOf(chart(lines(12))), []);
-    assert.deepStrictEqual(warningsOf(chart(lines(12)), { width: 400, height: 500 }), []);
-    assert.deepStrictEqual(warningsOf(chart(lines(16)), { width: 400, height: 500 }), [
-      'legend has more entries than fit the panel, which it pages through, 6 pages of them, so that a reader sees only some at a time: show fewer series, or name each line at its end with "endLabel": {"show": true, "formatter": "{a}"} instead of a legend.',
-    ]);
-    assert.match(
-      warningsOf(
-        { legend: {}, series: [{ type: "pie", data: slices(30) }] },
-        { width: 400, height: 600 },
-      ).join(),
-      /^legend has more entries than fit the panel, which it pages through, \d+ pages of them, so that a reader sees only some at a time: show fewer slices, as the largest and an "Other" that sums up the rest\.$/,
-    );
-    // The entries of a theme river name its layers, of the one series, and those of a graph the
-    // categories of its nodes.
-    const layers = Array.from({ length: 20 }, (_, index) => `Team ${index + 1}`);
-    const river = {
-      legend: {},
-      singleAxis: { type: "time" },
-      series: [
-        {
-          type: "themeRiver",
-          data: layers.flatMap((name) => [
-            ["2026-01-01", 2, name],
-            ["2026-01-02", 5, name],
-          ]),
-        },
-      ],
-    };
-    const graph = {
-      legend: {},
-      series: [
-        {
-          type: "graph",
-          categories: layers.map((name) => ({ name })),
-          data: layers.map((name, category) => ({ name, category, x: category, y: 0 })),
-        },
-      ],
-    };
-    for (const [option, remedy] of [
-      [river, "show fewer layers, or give them shorter names"],
-      [graph, "show fewer categories, or give them shorter names"],
-    ] as const) {
-      assert.match(
-        warningsOf(option, { width: 420, height: 420 }).join(),
-        new RegExp(`^legend has more entries than fit the panel, .*: ${remedy}\\.$`),
-      );
-    }
-    assert.deepStrictEqual(
-      warningsOf(
-        chart([
-          { name: "North", type: "bar", data: [1, 2, 3] },
-          { name: "South", type: "bar", data: [2, 3, 1] },
-        ]),
-      ),
-      [],
-    );
-    assert.deepStrictEqual(
-      warningsOf(
-        {
-          title: { text: "Quarterly revenue by region and product line" },
-          legend: { top: 0 },
-          ...chart([
-            { name: "North", type: "bar", data: [1, 2, 3] },
-            { name: "South", type: "bar", data: [2, 3, 1] },
-          ]),
-        },
-        { width: 400, height: 500 },
-      ),
-      [
-        'legend is drawn on top of title ("Quarterly revenue by region and product …"): place them apart with their "left", "right", "top" or "bottom", or leave those out of the legend for the panel to place it.',
-      ],
-    );
   });
 
   test("wraps a legend into the rows that ECharts draws it in, as far apart as the theme's", () => {

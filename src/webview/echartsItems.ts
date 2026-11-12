@@ -182,7 +182,7 @@ export const modelOf = (chart: ECharts.ECharts) =>
  * keeps the shape of each layer under the index of the layer, rather than of its items, and finds
  * what draws an item, as to highlight it, by the item's index.
  */
-export function riverLayer(chart: ECharts.ECharts, ref: ItemRef): number | undefined {
+function riverLayer(chart: ECharts.ECharts, ref: ItemRef): number | undefined {
   const series = modelOf(chart).getSeriesByIndex(ref.seriesIndex);
   if (series?.subType !== "themeRiver") return undefined;
   const index = series.getData().indexOfRawIndex(ref.dataIndex);

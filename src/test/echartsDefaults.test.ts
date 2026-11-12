@@ -1,8 +1,7 @@
 import * as assert from "node:assert";
-import type { ChartSpec } from "../chartSpec";
 import { modelOf } from "../webview/echartsItems";
 import { CACHED_FORMATTERS } from "../webview/echartsMeasure";
-import { bars, builtOption, layout, type Option, svgOf, withChart } from "./echartsModel";
+import { bars, layout, type Option, svgOf, withChart } from "./echartsModel";
 
 suite("echartsDefaults", () => {
   test("names the whole of an unnamed treemap in its breadcrumb", () => {
@@ -127,15 +126,6 @@ suite("echartsDefaults", () => {
     for (const each of own) {
       assert.notStrictEqual(layout(each).xAxis.axisPointer?.label?.formatter, formatter);
     }
-  });
-
-  test("labels years on the value axis of a scatter chart as years", () => {
-    const data = "year,sales\n2015,10\n2016,12\n2017,9\n2018,15";
-    const option = layout(builtOption({ data, type: "scatter" } as ChartSpec, data));
-    const svg = svgOf(option);
-    assert.match(svg, />2015</);
-    assert.match(svg, />2016\.5</);
-    assert.doesNotMatch(svg, /K</);
   });
 
   test("gives sankey nodes their own palette colors, also beyond eight", () => {

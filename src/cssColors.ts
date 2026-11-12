@@ -1,8 +1,6 @@
-// CSS colors as diagram_style takes them: parsing, the form written into Mermaid source, which can
-// carry no Mermaid syntax, and a readable text color for a fill. Free of the DOM, as is the color
-// arithmetic it shares with the webview.
+// Parses CSS colors without the DOM.
 
-import { contrast, type Rgba } from "./webview/colors";
+import type { Rgba } from "./webview/colors";
 
 /** The CSS named colors (CSS Color Module Level 4), and transparent. */
 const NAMED_COLORS: Record<string, string> = {
@@ -191,33 +189,6 @@ export function parseColor(text: string): Rgba | undefined {
     return undefined;
   }
   return { ...hslToRgb(hue, saturation / 100, lightness / 100), a };
-}
-
-/**
- * The color as written into Mermaid source: a name in lowercase, or else hex, as Mermaid separates
- * style properties with commas, which functions have.
- */
-export function sourceColor(text: string): string | undefined {
-  const value = text.trim().toLowerCase();
-  if (Object.hasOwn(NAMED_COLORS, value)) {
-    return value;
-  }
-  const color = parseColor(value);
-  return color && hexColor(color);
-}
-
-/** E.g. "#336699", or "#33669980" when translucent. */
-export function hexColor({ r, g, b, a }: Rgba): string {
-  const hex = (value: number) => Math.round(value).toString(16).padStart(2, "0");
-  return `#${hex(r)}${hex(g)}${hex(b)}${a < 1 ? hex(a * 255) : ""}`;
-}
-
-const BLACK: Rgba = { r: 0, g: 0, b: 0, a: 1 };
-const WHITE: Rgba = { r: 255, g: 255, b: 255, a: 1 };
-
-/** "black" or "white", whichever contrasts more with an opaque fill. */
-export function readableTextColor(fill: Rgba): "black" | "white" {
-  return contrast(BLACK, fill) >= contrast(WHITE, fill) ? "black" : "white";
 }
 
 function parseHex(hex: string): Rgba | undefined {
