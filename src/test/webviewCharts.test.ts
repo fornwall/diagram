@@ -1,14 +1,13 @@
 import * as assert from "node:assert";
 import * as vscode from "vscode";
 import { validateAnnotation } from "../annotations";
-import { SETTLE_DELAY } from "../webview/echartsRenderer";
 import { afterTest, recordMessages, replace } from "./afterTest";
 import { within } from "./newPanel";
-import { SVG_IMAGE, suitePage, UNTIL } from "./webviewHarness";
+import { suitePage, UNTIL } from "./webviewHarness";
 
 /**
  * A chart that counts its draws in `window.chartDraws`: how often each task that drew it did so,
- * which tells what one layout drew apart from what drew it again later.
+ * which tells one drawing apart from the next.
  */
 const COUNTED_CHART = `(() => {
   window.chartDraws = [];
@@ -252,7 +251,7 @@ suite("ECharts in the webview", function () {
     assert.strictEqual(left, 0);
   });
 
-  test("lays out a chart drawn in a hidden tab at an initial size, and for the tab once shown", async () => {
+  test("sizes a chart drawn in a hidden tab at an initial size, and for the tab once shown", async () => {
     // Mermaid leaves no chart whose size a new one would keep.
     await draw({ source: "flowchart LR\n A --> B" });
     await evaluate('receive({type: "tabVisibility", hidden: true})');
@@ -312,24 +311,17 @@ suite("ECharts in the webview", function () {
     assert.match(outcome.error, /unsupported type "map"/);
   });
 
-  test("tells what a chart draws other than its option meant, as laid out once animated", async () => {
-    // The nodes of a tree start at its root and move out to where they are laid out.
-    const leaf = "a leaf whose name is far too long to fit beside the tree, which goes on and on";
+  test("tells what a chart draws other than its option meant", async () => {
     await draw({
       language: "echarts",
       source: JSON.stringify({
         xAxis: { type: "category", data: ["A", "B"] },
-        yAxis: { max: 10, gridIndex: 0 },
-        grid: { right: "55%" },
-        series: [
-          { type: "bar", data: [5, 50] },
-          { type: "tree", left: "55%", data: [{ name: "root", children: [{ name: leaf }] }] },
-        ],
+        yAxis: { max: 10 },
+        series: [{ type: "bar", data: [5, 50] }],
       }),
     });
     assert.deepStrictEqual(page.panel.warnings, [
       'series[0] has values up to 50, above the "max" of yAxis, 10, which ECharts cuts off at the edge of the plot: raise "max", or leave it out.',
-      `series[1] has the text ${JSON.stringify(`${leaf.slice(0, 40)}…`)} cut off at the right edge of the chart: leave room for them with the series' "left", "right", "top" or "bottom", or shorten them.`,
     ]);
     await draw({
       language: "echarts",
@@ -534,39 +526,6 @@ suite("ECharts in the webview", function () {
     );
   });
 
-  test("shows every chart item selected that the panel selects, in a series of single selection", async () => {
-    await renderChart({
-      series: [
-        {
-          type: "pie",
-          selectedMode: "single",
-          data: ["A", "B", "C"].map((name) => ({ name, value: 1 })),
-          itemStyle: { color: "#0000ff" },
-          select: { itemStyle: { color: "#ff0000" } },
-          emphasis: { disabled: true },
-        },
-      ],
-    });
-    assert.deepStrictEqual(
-      await evaluate(`(async () => {
-        ${UNTIL}
-        ${CLICK_CHART}
-        const count = () => document.querySelectorAll('#chart svg path[fill="#ff0000"]').length;
-        const [a, b] = document.querySelectorAll('#chart svg path[fill="#0000ff"]');
-        clickChart(a);
-        await until(() => count() === 1, "one item selected");
-        clickChart(b, {ctrlKey: true});
-        await until(() => document.getElementById("selection-label").textContent.includes(","),
-          "two items selected in the panel");
-        await nextFrame(2);
-        const selected = [count(), document.getElementById("selection-label").textContent];
-        document.getElementById("clear-selection").click();
-        return selected;
-      })()`),
-      [2, "Selected: “A”, “B”"],
-    );
-  });
-
   test("clears every selected chart item together", async () => {
     await renderPie("A", "B", "C");
     assert.deepStrictEqual(
@@ -719,7 +678,7 @@ suite("ECharts in the webview", function () {
     assert.deepStrictEqual(
       await evaluate(`(async () => {
         ${CHART_FITTED}
-        // Let an earlier layout change, should one still be on its way, resize the chart first.
+        // Let an earlier resize, should one still be on its way, finish first.
         await chartFitted();
         const chart = document.getElementById("chart");
         const width = chart.clientWidth;
@@ -751,262 +710,6 @@ suite("ECharts in the webview", function () {
         }
       })()`),
       { sameSize: true, redraws: 0 },
-    );
-  });
-
-  /** A bar chart whose layout turns its category labels to fit them in, as it does when narrow. */
-  const ROTATING_CHART = JSON.stringify({
-    animation: false,
-    xAxis: { type: "category", data: ["Alpha category", "Beta category"] },
-    yAxis: {},
-    series: [{ type: "bar", data: [1, 2] }],
-  });
-  /**
-   * Webview code defining `rotated()`, whether the chart's category labels are turned,
-   * `rotatesAtOnce()`, whether they turn within a few frames: well before the layout that follows
-   * `SETTLE_DELAY` after the size stops changing, and `settled()`, which waits for that layout.
-   */
-  const ROTATED = `
-    const rotated = () => [...document.querySelectorAll("#chart svg text")].some((text) =>
-      /^matrix\\((?!1,0,0,1,)/.test(text.getAttribute("transform") ?? ""));
-    // Past the layout once the size settled since the chart was drawn, which the resize
-    // observer schedules in the frame after the one in which it sees the new drawing.
-    const settled = async () => {
-      await nextFrame(3);
-      await new Promise((resolve) => setTimeout(resolve, ${SETTLE_DELAY + 50}));
-    };
-    const rotatesAtOnce = async () => {
-      for (let frame = 0; frame < 5 && !rotated(); frame++) await new Promise(requestAnimationFrame);
-      return rotated();
-    };`;
-
-  test("lays a chart out for a new size at once, rather than only resizing it", async () => {
-    await draw({ language: "echarts", source: ROTATING_CHART });
-    assert.deepStrictEqual(
-      await evaluate(`(async () => {
-        ${CHART_FITTED}
-        ${ROTATED}
-        const canvas = document.getElementById("canvas");
-        await chartFitted();
-        await settled();
-        const wide = rotated();
-        Object.assign(canvas.style, {width: "250px", flex: "none"});
-        try {
-          return {wide, narrow: await rotatesAtOnce()};
-        } finally {
-          Object.assign(canvas.style, {width: "", flex: ""});
-          await chartFitted();
-        }
-      })()`),
-      { wide: false, narrow: true },
-    );
-  });
-
-  test("keeps category labels in Cyrillic across where the browser draws them narrow enough", async () => {
-    // ECharts measures these as wide as the browser draws them, apart from where it breaks them
-    // onto lines, which it measures each character of but ASCII as wide as one of Chinese.
-    const cities = ["Москва", "Казань", "Самара", "Пермь", "Уфа", "Омск"];
-    await renderChart({
-      xAxis: { type: "category", data: cities },
-      yAxis: {},
-      series: [{ type: "bar", data: [1, 2, 3, 4, 5, 6] }],
-    });
-    assert.deepStrictEqual(
-      await evaluate(`(async () => {
-        ${CHART_FITTED}
-        ${ROTATED}
-        const canvas = document.getElementById("canvas");
-        Object.assign(canvas.style, {width: "600px", flex: "none"});
-        try {
-          await chartFitted();
-          await settled();
-          const cities = new Set(${JSON.stringify(cities)});
-          const drawn = [...document.querySelectorAll("#chart svg text")].filter((text) =>
-            cities.has(text.textContent));
-          return {rotated: rotated(), drawn: drawn.length};
-        } finally {
-          Object.assign(canvas.style, {width: "", flex: ""});
-          await chartFitted();
-        }
-      })()`),
-      { rotated: false, drawn: 6 },
-    );
-  });
-
-  test("lays a chart out for a new size at once after an image was taken while resizing", async () => {
-    await draw({ language: "echarts", source: ROTATING_CHART });
-    assert.strictEqual(
-      await evaluate(`(async () => {
-        ${CHART_FITTED}
-        ${ROTATED}
-        ${SVG_IMAGE}
-        const canvas = document.getElementById("canvas");
-        await chartFitted();
-        await settled();
-        // The wait for a new size to settle does not end by itself meanwhile, as on a busy machine.
-        const original = window.setTimeout;
-        window.setTimeout = (handler, delay, ...rest) =>
-          original.call(window, handler, delay === ${SETTLE_DELAY} ? 3600000 : delay, ...rest);
-        try {
-          // An image taken while waiting for a new size to settle, which it lays the chart out
-          // for, ends the wait: the next size is again laid out at once.
-          Object.assign(canvas.style, {width: "600px", flex: "none"});
-          await chartFitted();
-          await svgImage();
-          canvas.style.width = "250px";
-          return await rotatesAtOnce();
-        } finally {
-          window.setTimeout = original;
-          Object.assign(canvas.style, {width: "", flex: ""});
-          await chartFitted();
-        }
-      })()`),
-      true,
-    );
-  });
-
-  test("keeps a graph's node where the user dragged it through a new layout for another size", async () => {
-    // A ring of A to D, which the panel places at rest, and E linked to two of them.
-    const node = (name: string, index: number) => ({
-      name,
-      symbolSize: 20,
-      itemStyle: { color: `#0000a${index}` },
-    });
-    const links = ["AB", "BC", "CD", "DA", "EA", "EC"].map(([source, target]) => ({
-      source,
-      target,
-    }));
-    const source = JSON.stringify({
-      animation: false,
-      series: [
-        {
-          type: "graph",
-          layout: "force",
-          draggable: true,
-          data: [..."ABCDE"].map(node),
-          links,
-        },
-      ],
-    });
-    await draw({ language: "echarts", source });
-    const shown = await evaluate(`(async () => {
-      ${CHART_FITTED}
-      ${ROTATED}
-      const svg = () => document.querySelector("#chart svg");
-      const center = (index) => {
-        const box = svg().querySelector('[fill="#0000a' + index + '"]').getBoundingClientRect();
-        return [box.x + box.width / 2, box.y + box.height / 2];
-      };
-      // Where E is across and down the bounds of A to D.
-      const across = () => {
-        const corners = [0, 1, 2, 3].map(center);
-        const xs = corners.map(([x]) => x);
-        const ys = corners.map(([, y]) => y);
-        const [x, y] = center(4);
-        const [left, top] = [Math.min(...xs), Math.min(...ys)];
-        return [(x - left) / (Math.max(...xs) - left), (y - top) / (Math.max(...ys) - top)];
-      };
-      const canvas = document.getElementById("canvas");
-      await chartFitted();
-      await settled();
-      const placed = across();
-      const [x, y] = center(4);
-      const mouse = (type, dx, dy) => svg().dispatchEvent(new MouseEvent(type, {
-        bubbles: true, clientX: x + dx, clientY: y + dy, buttons: type === "mouseup" ? 0 : 1,
-      }));
-      mouse("mousemove", 0, 0);
-      mouse("mousedown", 0, 0);
-      for (let step = 1; step <= 8; step++) mouse("mousemove", step * 8, step * 6);
-      mouse("mouseup", 64, 48);
-      await nextFrame(2);
-      const dragged = across();
-      Object.assign(canvas.style, {width: "300px", flex: "none"});
-      try {
-        await chartFitted();
-        await settled();
-        return {placed, dragged, resized: across()};
-      } finally {
-        Object.assign(canvas.style, {width: "", flex: ""});
-        await chartFitted();
-      }
-    })()`);
-    const { placed, dragged, resized } = shown as Record<
-      "placed" | "dragged" | "resized",
-      number[]
-    >;
-    const apart = (a: number[], b: number[]) =>
-      Math.max(...a.map((value, index) => Math.abs(value - (b[index] ?? 0))));
-    // Dragged away from where it was placed, and still there of the ring laid out anew.
-    assert.ok(apart(placed, dragged) > 0.2, JSON.stringify(shown));
-    assert.ok(apart(dragged, resized) < 0.05, JSON.stringify(shown));
-  });
-
-  test("resizes a chart with each frame of a drag only while that is quick", async () => {
-    // Drawing it takes 40 ms of `window.chartTime` while `window.slowChart` is set, as a chart of
-    // many items would, and 5 ms otherwise.
-    await draw({
-      language: "echarts",
-      source: `{animation: false, series: [{type: "custom", coordinateSystem: null, data: [1],
-        renderItem: (params, api) => {
-          window.chartTime += window.slowChart ? 40 : 5;
-          return {type: "circle", shape: {cx: 20, cy: 20, r: 10}, style: api.style()};
-        }}]}`,
-    });
-    assert.deepStrictEqual(
-      await evaluate(`(async () => {
-        ${CHART_FITTED}
-        ${ROTATED}
-        const canvas = document.getElementById("canvas");
-        const width = () => document.querySelector("#chart svg").getAttribute("width");
-        // How many widths the chart takes as its container narrows by 20 pixels every third frame,
-        // however long frames take on a busy machine: the page's clock, which times resizing the
-        // chart, moves only by the time drawing it takes, and the layout due once the size settles
-        // waits for the end of the drag.
-        const drag = async (slow) => {
-          await chartFitted();
-          await settled();
-          window.slowChart = slow;
-          window.chartTime = 0;
-          const {setTimeout, clearTimeout} = window;
-          const settles = new Map();
-          window.setTimeout = (handler, delay, ...rest) => {
-            if (delay !== ${SETTLE_DELAY}) return setTimeout(handler, delay, ...rest);
-            const id = setTimeout(() => {}, 3600000);
-            settles.set(id, handler);
-            return id;
-          };
-          window.clearTimeout = (id) => {
-            settles.delete(id);
-            clearTimeout(id);
-          };
-          performance.now = () => window.chartTime;
-          const widths = new Set();
-          try {
-            for (let step = 0; step < 6; step++) {
-              Object.assign(canvas.style, {width: (500 - step * 20) + "px", flex: "none"});
-              await nextFrame(3);
-              widths.add(width());
-            }
-          } finally {
-            window.slowChart = false;
-            delete performance.now;
-            Object.assign(window, {setTimeout, clearTimeout});
-            for (const [id, settle] of settles) {
-              clearTimeout(id);
-              settle();
-            }
-          }
-          return widths.size;
-        };
-        try {
-          return {quick: await drag(false), slow: await drag(true), fitted: await chartFitted()};
-        } finally {
-          Object.assign(canvas.style, {width: "", flex: ""});
-          await chartFitted();
-        }
-      })()`),
-      // Laid out for the first width at once, and resized for the second, which was slow.
-      { quick: 6, slow: 2, fitted: true },
     );
   });
 
@@ -1068,7 +771,6 @@ suite("ECharts in the webview", function () {
           root.setProperty("--vscode-charts-blue", ${JSON.stringify(color)});
           try {
             await until(() => fill() === "#123456", "the theme's color", nextFrame);
-            // A layout that is not the theme's, still on its way from rendering, draws once too.
             return [...new Set(window.chartDraws.slice(before))];
           } finally {
             root.removeProperty("--vscode-charts-blue");
@@ -1100,6 +802,7 @@ suite("ECharts in the webview", function () {
         // As Dark and Light Modern set it.
         const original = root.getPropertyValue("--vscode-charts-orange");
         const kind = document.body.dataset.vscodeThemeKind;
+        const drawn = second();
         root.setProperty("--vscode-charts-orange", "rgba(234, 92, 0, 0.33)");
         try {
           // Not the brown that it makes over the background. Reading it back rounds it a little.
@@ -1113,7 +816,7 @@ suite("ECharts in the webview", function () {
         } finally {
           document.body.dataset.vscodeThemeKind = kind;
           root.setProperty("--vscode-charts-orange", original);
-          await until(() => second() !== "#d18616", "the theme's orange again", nextFrame);
+          await until(() => second() === drawn, "the theme's orange again", nextFrame);
         }
       })()`)) as string[];
     assert.match(translucent ?? "", /^#e[9ab]5[a-c]00$/);
@@ -1143,7 +846,7 @@ suite("ECharts in the webview", function () {
         const root = document.documentElement.style;
         root.setProperty("--vscode-charts-blue", "#123456");
         try {
-          await until(() => fills().includes("#123456"), "the theme's color");
+          await until(() => fills().includes("#123456") && fills().includes("#ff0000"), "the theme's color");
           return fills();
         } finally {
           root.removeProperty("--vscode-charts-blue");
@@ -1199,8 +902,8 @@ suite("ECharts in the webview", function () {
     await evaluate(`document.getElementById("clear-selection").click()`);
   });
 
-  /** Renders a chart of the option, without animation. */
   const SALES = {
+    tooltip: { trigger: "axis" },
     xAxis: { type: "category", data: ["Mon", "Tue", "Wed"] },
     yAxis: {},
     series: ["A", "B", "C"].map((name, n) => ({ name, type: "bar", data: [n + 1, n + 2, n + 3] })),
@@ -1297,7 +1000,7 @@ suite("ECharts in the webview", function () {
         // Its data between its heading and its Close button, for the chart as it is now.
         const canvas = document.getElementById("canvas");
         const fits = async (height) => {
-          Object.assign(canvas.style, {height, flex: "none"});
+          canvas.style.height = height;
           await nextFrame();
           const view = dataView();
           const data = view.children[1].getBoundingClientRect();
@@ -1305,7 +1008,7 @@ suite("ECharts in the webview", function () {
           return data.bottom <= close.top && close.top - data.bottom < 40;
         };
         const fitted = [await fits("250px"), await fits("600px")];
-        Object.assign(canvas.style, {height: "", flex: ""});
+        canvas.style.height = "";
         const moved = [press("ArrowRight"), press("Enter"), ring()];
         const escape = new KeyboardEvent("keydown", {key: "Escape", bubbles: true, cancelable: true});
         chart.dispatchEvent(escape);
@@ -1505,6 +1208,7 @@ suite("ECharts in the webview", function () {
 
   test("takes the axis pointer and the emphasis it shows off a chart that loses the focus", async () => {
     await renderChart({
+      tooltip: { trigger: "axis" },
       xAxis: { type: "category", data: ["Mon", "Tue"] },
       yAxis: {},
       series: [
@@ -1588,7 +1292,7 @@ suite("ECharts in the webview", function () {
             ["2026-01-02", 20, "a"],
             ["2026-01-03", 10, "a"],
             ["2026-01-01", 5, "b"],
-            ["2026-01-02", 30, "b"],
+            ["2026-01-02", 10, "b"],
             ["2026-01-03", 5, "b"],
           ],
         },
@@ -1607,16 +1311,13 @@ suite("ECharts in the webview", function () {
       chart.focus();
       press("Home");
       const moves = ["ArrowRight", "ArrowDown"].map((key) => [press(key), ringIn()]);
-      const tip = tooltip();
       chart.blur();
-      return {moves, tip};
-    })()`)) as { moves: string[][]; tip: string };
-    assert.deepStrictEqual(result.moves, [
+      return moves;
+    })()`)) as string[][];
+    assert.deepStrictEqual(result, [
       ["2026-01-02: (20, a), 2 of 6", "a"],
-      ["2026-01-02: (30, b), 5 of 6", "b"],
+      ["2026-01-02: (10, b), 5 of 6", "b"],
     ]);
-    // The tip of the time, for every layer.
-    assert.match(result.tip, /a\s*20.*b\s*30/s);
     page.panel.annotate({ marks: [{ id: "2026-01-02 (item 5)", kind: "info" }], dim: false });
     const marked = await evaluate(`(async () => {
       ${UNTIL}
@@ -2014,46 +1715,6 @@ suite("ECharts in the webview", function () {
       })()`),
       { focused: true, ring: true, next: "Tue: 2, series A, 2 of 3" },
     );
-  });
-
-  test("cuts the words of a pie's labels short as wide as their font draws them, bold too", async () => {
-    const data = [
-      { name: "Authentication", value: 182 },
-      { name: "Payments", value: 96 },
-      { name: "Notifications", value: 64 },
-      { name: "Search", value: 31 },
-    ];
-    for (const label of [
-      { formatter: "{b}: {d}%", fontWeight: "bold" },
-      { formatter: "{name|{b}}\n{d}%", rich: { name: { fontWeight: "bold" } } },
-      { formatter: "{name|{b}}: {d}%", rich: { name: { fontSize: 15 } } },
-    ]) {
-      await renderChart({ title: { text: "Bugs" }, series: [{ type: "pie", label, data }] });
-      const broken = await evaluate(`(async () => {
-        ${CHART_FITTED}
-        const canvas = document.getElementById("canvas");
-        const broken = [];
-        try {
-          for (const [width, height] of [[310, 0], [330, 0], [310, 240], [330, 240], [310, 500], [330, 500], [310, 800], [330, 800]]) {
-            Object.assign(canvas.style, {width: width + "px", height: height ? height + "px" : "", flex: "none"});
-            await chartFitted();
-            // Laid out for the size once it settles.
-            await nextFrame(3);
-            await new Promise((resolve) => setTimeout(resolve, ${SETTLE_DELAY + 50}));
-            for (const text of document.querySelectorAll("#chart svg text")) {
-              // The ellipsis of a word cut short that ECharts broke onto a line of its own.
-              const line = text.textContent.trim();
-              if (/^\\.|[^.]\\.{1,2}$/.test(line)) broken.push(width + "×" + (height || "auto") + ": " + line);
-            }
-          }
-        } finally {
-          Object.assign(canvas.style, {width: "", height: "", flex: ""});
-          await chartFitted();
-        }
-        return broken;
-      })()`);
-      assert.deepStrictEqual(broken, [], JSON.stringify(label));
-    }
   });
 
   test("draws a graph in the view coordinate system after a chart that failed", async () => {

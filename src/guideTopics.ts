@@ -795,7 +795,7 @@ const ECHARTS: GuideTopic[] = [
 - Series types: bar, line, scatter, effectScatter, pie, radar, funnel, gauge, heatmap, tree, treemap, sunburst, sankey, graph, chord, boxplot, candlestick, parallel, themeRiver, pictorialBar, lines, custom. Components: grid, polar, singleAxis, calendar, matrix, dataset with transforms, dataZoom, visualMap, timeline, markLine/markPoint/markArea, graphic. No geo or maps, brush or 3D.
 - Every axis that matters gets a name with its unit: "name": "Latency (ms)". A short title; units or the source in subtext.
 - Choose: bar to compare categories, line for trends over time, scatter for correlation, pie only for few shares of a whole, heatmap for two categories, treemap for sizes in a hierarchy, sankey for flows.
-Panel, unless the option sets them: VS Code theme colors, font and a transparent background (leave out color, backgroundColor, textStyle); a tooltip (axis for bar and line, item otherwise); a scrolling legend for several named series or a small pie; the grid fitted to the panel with room for axis labels (setting grid left/right/top/bottom turns that off); long category labels rotated or cut; compact value labels (1.5M); thousands separators in "{c}" templates; selection highlighting. A title equal to the panel's title is hidden. Toolbox magicType, dataZoom and brush are left out (use a dataZoom component); media queries turn off the panel's layout.`,
+Panel: draws the option as written, in the VS Code theme's colors and font on a transparent background (leave out color, backgroundColor, textStyle), sized to the panel, with selectable items. Layout is the option's: place title, legend and grid so they don't overlap, and add "tooltip": {} for tooltips.`,
   },
   {
     name: "echarts-bar",
@@ -815,6 +815,8 @@ Panel, unless the option sets them: VS Code theme colors, font and a transparent
   "title": {"text": "Open issues by team"},
   "xAxis": {"type": "value", "name": "Issues"},
   "yAxis": {"type": "category", "inverse": true, "data": ["Platform", "Payments", "Mobile", "Web", "Data"]},
+  "legend": {"bottom": 0},
+  "tooltip": {"trigger": "axis"},
   "series": [
     {"name": "Bugs", "type": "bar", "stack": "total", "data": [34, 21, 18, 12, 7]},
     {"name": "Features", "type": "bar", "stack": "total", "data": [12, 15, 9, 10, 4]}
@@ -826,8 +828,7 @@ Panel, unless the option sets them: VS Code theme colors, font and a transparent
 - Line: "type": "line"; "areaStyle": {} for an area, with "stack" for a stacked area; "showSymbol": false for many points; "smooth" only for dense data.
 - Value labels: "label": {"show": true, "position": "top"} (or "right" for horizontal bars) for up to ~12 bars of one series; on stacked bars a label shows the segment, not the total.
 - markLine: {"data": [{"type": "average", "name": "Average"}]} adds a reference line.
-- Up to ~5 series per chart; more: a heatmap or small multiples (diagram_chart's facetColumn). No 3D, no dual axes unless the units differ (echarts-dual-axis).
-Panel: adds the legend for named series, the axis tooltip and room for labels.`,
+- Up to ~5 series per chart; more: a heatmap or small multiples. No 3D, no dual axes unless the units differ (echarts-dual-axis).`,
   },
   {
     name: "echarts-scatter",
@@ -877,8 +878,7 @@ Panel: adds the legend for named series, the axis tooltip and room for labels.`,
     notes: `- "data" holds {"name", "value"} items; "radius": ["35%", "55%"] makes a doughnut with room for labels beside it, also in a narrow panel.
 - Templates: {b} name, {c} value, {d} percent.
 - At most ~6 slices, largest first, the rest merged into "Other". To compare values or show change over time, use bars.
-- Avoid roseType and several pies side by side: angles and areas are hard to compare.
-Panel: adds a legend when the panel is too small for labels, and the item tooltip.`,
+- Avoid roseType and several pies side by side: angles and areas are hard to compare.`,
   },
   {
     name: "echarts-time",
@@ -907,8 +907,7 @@ Panel: adds a legend when the panel is too small for labels, and the item toolti
 - Labels: "axisLabel": {"formatter": "{HH}:{mm}"} or {"formatter": "{yyyy}-{MM}-{dd}"}; the default adapts to the zoom.
 - null in the data breaks the line at a gap; "connectNulls": true bridges it.
 - dataZoom "inside" zooms with the wheel and pans by dragging; "slider" adds a range bar. markArea marks periods, markLine events: {"data": [{"xAxis": "2026-03-01T10:03:00Z", "name": "Deploy"}]}.
-- Several series: each with its own [time, value] pairs; times need not line up.
-Panel: places the slider below the plot; long series are sampled (see echarts-large).`,
+- Several series: each with its own [time, value] pairs; times need not line up.`,
   },
   {
     name: "echarts-dual-axis",
@@ -941,7 +940,7 @@ Panel: places the slider below the plot; long series are sampled (see echarts-la
   "title": {"text": "Deploys by weekday and hour"},
   "xAxis": {"type": "category", "name": "Hour", "data": ["0-4", "4-8", "8-12", "12-16", "16-20", "20-24"]},
   "yAxis": {"type": "category", "inverse": true, "data": ["Mon", "Tue", "Wed", "Thu", "Fri"]},
-  "visualMap": {"min": 0, "max": 12, "calculable": true},
+  "visualMap": {"min": 0, "max": 12, "calculable": true, "orient": "horizontal", "left": "center", "bottom": 0},
   "series": [{
     "type": "heatmap",
     "label": {"show": true},
@@ -955,10 +954,9 @@ Panel: places the slider below the plot; long series are sampled (see echarts-la
   }]
 }`,
     notes: `- Cells are [x index, y index, value] (or [x name, y name, value]) on two category axes. A visualMap with the data's min and max is required for colors.
-- Labels in cells for up to ~100 cells; else rely on the tooltip.
+- Labels in cells for up to ~100 cells; else a tooltip.
 - Per day: "calendar": {"range": ["2026-01-01", "2026-03-31"]} and a heatmap series with "coordinateSystem": "calendar" and ["2026-01-05", 3] items.
-- ECharts 6's "matrix" component draws a table of labeled rows and columns: a heatmap with "coordinateSystem": "matrix" takes [column name, row name, value].
-Panel: places the visualMap below the plot.`,
+- ECharts 6's "matrix" component draws a table of labeled rows and columns: a heatmap with "coordinateSystem": "matrix" takes [column name, row name, value].`,
   },
   {
     name: "echarts-hierarchy",
@@ -993,8 +991,7 @@ Panel: places the visualMap below the plot.`,
 - treemap: "upperLabel": {"show": true} names the parents; "leafDepth": 2 shows two levels at a time and drills down on click.
 - sunburst: "radius": ["15%", "90%"]; up to ~3 levels read well.
 - tree: "data" holds one root (only the first root is drawn); "orient": "LR" or "TB", "layout": "radial"; "initialTreeDepth" for large trees.
-- For structure without sizes, a Mermaid mindmap or flowchart reads better.
-Panel: names an unnamed treemap's root "All" in its breadcrumb.`,
+- For structure without sizes, a Mermaid mindmap or flowchart reads better.`,
   },
   {
     name: "echarts-graph",
@@ -1028,8 +1025,7 @@ Panel: names an unnamed treemap's root "All" in its breadcrumb.`,
 - "layout": "force" for networks, "circular" for cycles, "none" with x and y on every node.
 - symbolSize by importance; "edgeSymbol": ["none", "arrow"] for direction; link labels with "label": {"show": true, "formatter": "calls"} on a link.
 - Up to ~50 labeled nodes read well; for more, hide labels and let emphasis show them.
-- For a few nodes with directed dependencies, a Mermaid flowchart reads better.
-Panel: places a force layout of up to 200 nodes at rest itself, the same each time and all within the panel, and draws it as placed nodes, of which a dragged one moves alone; not if "force" sets initLayout, friction or layoutAnimation.`,
+- For a few nodes with directed dependencies, a Mermaid flowchart reads better.`,
   },
   {
     name: "echarts-sankey",
@@ -1132,11 +1128,10 @@ Panel: links and nodes are selectable; marks and selection highlight them.`,
   xAxis: { type: "value", name: "Request" },
   yAxis: { type: "value", name: "Latency (ms)", scale: true },
   dataZoom: [{ type: "inside" }, { type: "slider" }],
-  series: [{ type: "line", showSymbol: false, encode: { x: 0, y: 1 } }],
+  series: [{ type: "line", showSymbol: false, sampling: "lttb", encode: { x: 0, y: 1 } }],
 }`,
-    notes: `- The panel draws with SVG (sharp, exportable) and has no progressive rendering. It samples long unstacked lines with LTTB and draws large scatter series as one shape, unless the option sets "sampling" or "large".
+    notes: `- The panel draws with SVG (sharp, exportable) and has no progressive rendering: set "sampling": "lttb" on long lines and "large": true on big scatter series.
 - Still aggregate first: bins, averages per time unit or top N. More than ~10,000 points rarely shows more, and the source travels in the tool call.
-- For data in files or command output, diagram_chart reads, aggregates and bins it itself, without sending it through the model.
 - Use a dataset with "encode" rather than copies of the data per series; "showSymbol": false and no labels per point; dataZoom to explore.
 - Dense two-dimensional data reads better as a heatmap.`,
   },
@@ -1175,8 +1170,7 @@ Panel: links and nodes are selectable; marks and selection highlight them.`,
 - tooltip.valueFormatter (a function) formats each value and keeps the default layout: the simplest way to add units.
 - tooltip.formatter(params) gets an array of items for "trigger": "axis", one item for "item"; it returns HTML text.
 - Rich text: "formatter": "{name|{b}}\\n{c}" with "rich": {"name": {"fontWeight": "bold"}}.
-- Functions need a trusted workspace, and nothing is in scope (no echarts global): use toFixed, toLocaleString or Intl.NumberFormat.
-Panel: "{c}" templates of labels and item tooltips get thousands separators; value axes get compact labels (1.5M) unless axisLabel sets a formatter.`,
+- Functions need a trusted workspace, and nothing is in scope (no echarts global): use toFixed, toLocaleString or Intl.NumberFormat.`,
   },
   {
     name: "echarts-radar",
@@ -1214,7 +1208,6 @@ Panel: "{c}" templates of labels and item tooltips get thousands separators; val
   ]
 }`,
     notes: `- Boxplot items are [min, Q1, median, Q3, max] per category. From raw samples: a dataset whose rows are each group's samples, then {"transform": {"type": "boxplot"}} computes them (and outliers as its second result).
-- diagram_chart's boxplot type computes them from a data file or command output.
 - Candlestick items are [open, close, low, high] on a category or time axis.
 - Name the value axis with its unit; a scatter series for outliers or raw points.`,
   },

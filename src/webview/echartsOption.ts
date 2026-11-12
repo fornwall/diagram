@@ -33,17 +33,15 @@ function optionPatches(option: JsonObject): { steps: Patch[]; media: Patch[] } {
   };
 }
 
-/** The base option and the options that patch it, each of which can set e.g. series. */
-export function optionVariants(option: JsonObject): JsonObject[] {
+/** The series of the base option and of the options that patch it. */
+function allSeries(option: JsonObject): JsonObject[] {
   const { steps, media } = optionPatches(option);
-  return [baseOption(option), ...[...steps, ...media].map(([, patch]) => patch)];
+  return [baseOption(option), ...[...steps, ...media].map(([, patch]) => patch)].flatMap(
+    (variant) => asArray(variant.series),
+  );
 }
 
-/** The series of the base option and of the options that patch it. */
-export const allSeries = (option: JsonObject): JsonObject[] =>
-  optionVariants(option).flatMap((variant) => asArray(variant.series));
-
-export const seriesOf = (option: JsonObject): unknown[] =>
+const seriesOf = (option: JsonObject): unknown[] =>
   option.series === undefined ? [] : Array.isArray(option.series) ? option.series : [option.series];
 
 /** An id or name as ECharts compares them, which takes a number for the same text. */
@@ -56,7 +54,7 @@ const comparable = (key: unknown) => (typeof key === "number" ? String(key) : ke
  * drawn, of its own or one that ECharts makes up. What is not an object is skipped, as ECharts
  * skips it, rather than given a place.
  */
-export function seriesPlaces(base: unknown[], patch: unknown[]): (number | undefined)[] {
+function seriesPlaces(base: unknown[], patch: unknown[]): (number | undefined)[] {
   const places: (number | undefined)[] = patch.map(() => undefined);
   const taken = new Set<number>();
   const take = (index: number, place: number) => {
@@ -115,8 +113,6 @@ function coordinateSystem(series: JsonObject): string | undefined {
     ? series.coordinateSystem
     : DEFAULT_COORDINATE_SYSTEMS[String(series.type)];
 }
-
-export const isCartesian = (series: JsonObject) => coordinateSystem(series) === "cartesian2d";
 
 /** The components that each coordinate system needs, without which ECharts throws or draws nothing. */
 const COORDINATE_COMPONENTS: Record<string, { needs: string[]; example: string }> = {
@@ -542,7 +538,6 @@ function findJavaScript(
       }
     });
   } else if (isPlainObject(value)) {
-    // Layout copies inherited properties too, so validate the same values it will copy.
     for (const key in value) {
       const item = value[key];
       keys.push(key);

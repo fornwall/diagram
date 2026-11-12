@@ -1,13 +1,11 @@
-// Checks a chart as ECharts laid it out for what it draws other than its option meant, without a
-// word: values it cannot read or draws past the end of an axis, data that does not line up with
-// its categories or dataset, and labels and legends that the panel's size leaves hidden,
-// overlapping or cut off. A model is told what is wrong, where in its option, and how to fix it.
+// Checks a chart for what ECharts draws other than its option meant, without a word: values it
+// cannot read or draws past the end of an axis, and data that does not line up with its categories
+// or dataset. A model is told what is wrong, where in its option, and how to fix it.
 
 import type * as ECharts from "echarts/core";
-import { asArray, isPlainObject } from "../protocol";
-import { brief, joinWords, plural, quote, quoteAll } from "../text";
-import { type Box, modelOf } from "./echartsItems";
-import { styleOf } from "./echartsMeasure";
+import { isPlainObject } from "../protocol";
+import { brief, joinWords, plural, quoteAll } from "../text";
+import { modelOf } from "./echartsItems";
 import { baseOption, type JsonObject } from "./echartsOption";
 
 // The parts of ECharts' private model read here, which echartsChecks.test.ts checks it still has.
@@ -40,35 +38,20 @@ interface Data {
   getDataExtent(dimension: string): [number, number];
   /** Of a stacked series: the dimension it stacks, and where it holds the values stacked. */
   getCalculationInfo(key: "stackedDimension" | "stackResultDimension"): string | undefined;
-  getName(index: number): string;
-  /** What draws the item, unless it is drawn together with others or not at all. */
-  getItemGraphicEl(index: number): Element | null | undefined;
-  /** The settings of an item: its own, over those of its series. */
-  getItemModel(index: number): { get(path: string[]): unknown };
 }
 
 interface ComponentModel {
   mainType: string;
   componentIndex: number;
-  /** The option of the component, with ECharts' defaults and what the panel's layout set. */
+  /** The option of the component, with ECharts' defaults. */
   option: JsonObject;
-  get(key: string | string[]): unknown;
-}
-
-interface AxisModel extends ComponentModel {
-  axis?: Axis;
-  /** The categories of a category axis, as text. */
-  getCategories(): string[];
 }
 
 interface Axis {
-  /** "x", "y", "radius", "angle", … */
-  dim: string;
   /** "category", "value", "time" or "log". */
   type: string;
-  model: AxisModel;
+  model: ComponentModel;
   scale: { getExtent(): [number, number] };
-  isHorizontal?(): boolean;
 }
 
 interface Series {
@@ -89,7 +72,6 @@ interface Series {
 
 interface Model {
   eachRawSeries(callback: (series: Series) => void): void;
-  eachComponent(mainType: string, callback: (component: ComponentModel) => void): void;
 }
 
 /** What a model should know about the data that the chart draws other than its option meant. */
@@ -195,15 +177,6 @@ export function capWarnings(warnings: string[]): string[] {
   return left === 0
     ? kept
     : [...kept, `${plural(left, "more warning")} left out, to tell once these are fixed.`];
-}
-
-/** How many items the series of a chart have, which a layout takes the longer to check. */
-export function itemCount(chart: ECharts.ECharts): number {
-  let count = 0;
-  (modelOf(chart) as unknown as Model).eachRawSeries((series) => {
-    count += series.getRawData().count();
-  });
-  return count;
 }
 
 /** The path of a component in the option, as "xAxis" for its only one, or "xAxis[1]". */
@@ -578,415 +551,6 @@ function radarOffScale(series: Series, path: string, base: JsonObject): string[]
         `${path} has values up to ${number(most)} for indicator ${index + 1}${name}, above its ` +
           `"max" of ${number(indicator.max)}, which ECharts draws outside the radar: raise "max", ` +
           "or leave it out for ECharts to fit the data.",
-      );
-    }
-  });
-  return warnings;
-}
-
-/** A zrender element, as read here. */
-interface Element {
-  type?: string;
-  parent?: Element | null;
-  ignore?: boolean;
-  invisible?: boolean;
-  /** The id that ECharts animates an element by, such as "label_3" for an axis's fourth label. */
-  anid?: string;
-  /** Whether a text is cut short, with an ellipsis. */
-  isTruncated?: boolean;
-  style?: { text?: unknown; opacity?: number };
-  /** The element that a label belongs to. */
-  __hostTarget?: Element | null;
-  /** The series or component that the group of a view draws. */
-  __ecComponentInfo?: { mainType: string; index: number } | null;
-  getBoundingRect(): Box & { clone(): Box & { applyTransform(matrix: number[] | null): void } };
-  getComputedTransform(): number[] | null;
-  /** What the element and what it contains are drawn within, if anything. */
-  getClipPath?(): unknown;
-  /** The label of an element, such as of the slice of a pie. */
-  getTextContent?(): Element | null | undefined;
-  /** The lines of a text, as drawn. */
-  childrenRef?(): Element[];
-  traverse?(callback: (element: Element) => void): void;
-}
-
-/** A text as drawn: of what series or component, where in the chart, and what it says. */
-interface Text {
-  owner: { mainType: string; index: number } | undefined;
-  box: Box;
-  text: string;
-  /** Whether it is drawn within a clip, as the entries of a legend that pages them are. */
-  clipped: boolean;
-}
-
-interface Views {
-  getViewOfComponentModel(component: object): { group: Element } | undefined;
-  getZr(): { storage: { getDisplayList(update: boolean): Element[] } };
-}
-
-/**
- * What the size of the panel leaves the chart unable to show as the option means: category labels
- * hidden or cut short alike, texts cut off at the edge of the chart, labels and legends on top of
- * each other, and a legend paged. Of a chart drawn without animation, as an animation starts what
- * it moves where it moves it from, such as the nodes of a tree from its root.
- */
-export function layoutWarnings(chart: ECharts.ECharts, option: JsonObject): string[] {
-  const model = modelOf(chart) as unknown as Model;
-  const base = baseOption(option);
-  const views = chart as unknown as Views;
-  const size = { width: chart.getWidth(), height: chart.getHeight() };
-  const texts = drawnTexts(views);
-  return [
-    ...categoryLabels(views, model, base, size),
-    ...cutOff(texts, model, base, size),
-    ...hiddenLabels(model, base),
-    ...legends(views, model, base, texts),
-  ];
-}
-
-/**
- * Where in the chart a text's lines are. A text of a width and line height of its own is laid out
- * in a box as wide, which its bounds take in, though its lines may be narrower: a label that ends
- * at its node, near the edge of the chart, is in a box that reaches past the edge.
- */
-function linesBox(text: Element): Box {
-  const lines = (text.childrenRef?.() ?? []).filter((child) => child.type === "tspan");
-  const boxes = (lines.length > 0 ? lines : [text]).map((line) => {
-    const box = line.getBoundingRect().clone();
-    box.applyTransform(line.getComputedTransform());
-    return box;
-  });
-  const x = Math.min(...boxes.map((box) => box.x));
-  const y = Math.min(...boxes.map((box) => box.y));
-  return {
-    x,
-    y,
-    width: Math.max(...boxes.map((box) => box.x + box.width)) - x,
-    height: Math.max(...boxes.map((box) => box.y + box.height)) - y,
-  };
-}
-
-/** The texts that the chart draws. */
-function drawnTexts(views: Views): Text[] {
-  const texts: Text[] = [];
-  const seen = new Set<Element>();
-  // Updates what changed since the chart was drawn, as the next frame would.
-  for (const line of views.getZr().storage.getDisplayList(true)) {
-    const element = line.type === "tspan" ? line.parent : undefined;
-    if (element?.type !== "text" || seen.has(element)) continue;
-    seen.add(element);
-    if (element.invisible || element.style?.opacity === 0) continue;
-    const box = linesBox(element);
-    if (box.width <= 0 || box.height <= 0) continue;
-    let owner: Text["owner"];
-    let clipped = false;
-    // Up to the group of the view that draws it, from a label through the item it labels.
-    for (
-      let at: Element | null | undefined = element;
-      at && !owner;
-      at = at.__hostTarget ?? at.parent
-    ) {
-      owner = at.__ecComponentInfo ?? undefined;
-      clipped ||= at.getClipPath?.() != null;
-    }
-    texts.push({ owner, box, text: String(element.style?.text ?? ""), clipped });
-  }
-  return texts;
-}
-
-/** The path of what draws a text, such as "series[1]" or "xAxis". */
-const ownerPath = (base: JsonObject, owner: NonNullable<Text["owner"]>) =>
-  componentPath(base, owner.mainType, owner.index);
-
-/**
- * Category labels that read as names, which a reader needs every one of: not as a sequence, such
- * as years, dates, months or numbers, whose labels in between a reader can tell.
- */
-function namesCategories(categories: string[]): boolean {
-  const sequence =
-    /^(?:[\d\s.,:/\-–_'+%()#]|\b(?:q[1-4]|h[12]|w\d+|fy|cw|kw|wk|week|day|month|year|quarter|am|pm|jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?|mon(?:day)?|tue(?:s(?:day)?)?|wed(?:nesday)?|thu(?:rs(?:day)?)?|fri(?:day)?|sat(?:urday)?|sun(?:day)?)\b)*$/i;
-  return categories.some((category) => !sequence.test(category));
-}
-
-/**
- * Category labels that ECharts leaves out, as they would overlap, of an axis whose categories are
- * names; labels drawn over each other, as of an axis whose option shows them all; and labels cut
- * short so that several read alike. The same of several axes, as of facets, is told once.
- */
-function categoryLabels(
-  views: Views,
-  model: Model,
-  base: JsonObject,
-  size: { width: number; height: number },
-): string[] {
-  const findings: Finding[] = [];
-  for (const mainType of ["xAxis", "yAxis"]) {
-    model.eachComponent(mainType, (component) => {
-      const axisModel = component as AxisModel;
-      const axis = axisModel.axis;
-      if (axis?.type !== "category" || axisModel.get(["axisLabel", "show"]) === false) return;
-      // Whether the option chooses which labels to show: the layout sets the interval of a
-      // vertical axis of many categories itself (see echartsGrid.ts), which is no such choice.
-      const own = asArray(base[mainType])[axisModel.componentIndex];
-      const interval = styleOf(own?.axisLabel).interval;
-      const chosen = interval !== undefined && interval !== "auto";
-      const labels: Element[] = [];
-      views.getViewOfComponentModel(axisModel)?.group.traverse?.((element) => {
-        if (element.type === "text" && element.anid?.startsWith("label_")) labels.push(element);
-      });
-      if (labels.length === 0) return;
-      const shown = labels.filter((label) => !label.ignore);
-      const [start, end] = axis.scale.getExtent();
-      const categories = axisModel.getCategories().slice(start, end + 1);
-      const path = componentPath(base, mainType, axisModel.componentIndex);
-      const horizontal = axis.isHorizontal?.() ?? mainType === "xAxis";
-      const room = horizontal ? `width of ${size.width}` : `height of ${size.height}`;
-      const fewer = horizontal
-        ? `put the categories on ${mainType === "xAxis" ? "yAxis" : "xAxis"} as a horizontal bar chart, shorten the names, or add a "dataZoom" to show fewer at a time`
-        : (paths: string[]) =>
-            `show fewer categories, such as the largest and an "Other", or add a "dataZoom" on ${paths.length === 1 ? path : "each axis"} to show fewer at a time`;
-      const remedy = (paths: string[]) => (typeof fewer === "string" ? fewer : fewer(paths));
-      const finding = (key: string, say: Finding["say"]): Finding => ({
-        key: `${key}:${mainType}:${horizontal}`,
-        path,
-        amount: 0,
-        merge: "sum",
-        say,
-      });
-      if (!chosen && shown.length < categories.length && namesCategories(categories)) {
-        findings.push(
-          finding(`left:${shown.length}:${categories.length}`, (paths) => {
-            const of = paths.length === 1 ? "its" : "their";
-            return (
-              `${listed(paths, "", "axes")} ${verb(paths, "shows", "show")} only ${shown.length} of ${of} ` +
-              `${categories.length} category labels${paths.length > 1 ? " each" : ""} at the ` +
-              `panel's ${room} pixels, leaving out the others for lack of room: ${remedy(paths)}.`
-            );
-          }),
-        );
-      }
-      const over = overlappingLabels(shown);
-      if (over > 0) {
-        findings.push(
-          finding(`over:${over}:${shown.length}:${chosen}`, (paths) => {
-            const of = paths.length === 1 ? "its" : "their";
-            const which =
-              over === shown.length ? `${of} ${over}` : `${over} of ${of} ${shown.length}`;
-            const instead = chosen
-              ? `leave "interval" out of ${listed(paths, ".axisLabel", "axes")}, for the panel to turn them or leave some out, or shorten the names`
-              : remedy(paths);
-            return (
-              `${listed(paths, "", "axes")} ${verb(paths, "draws", "draw")} ${which} category ` +
-              `labels over each other at the panel's ${room} pixels: ${instead}.`
-            );
-          }),
-        );
-      }
-      // Labels cut short alike, which the reader cannot tell apart.
-      const cut = new Map<string, Set<string>>();
-      for (const label of shown) {
-        if (!label.isTruncated) continue;
-        const text = (label.childrenRef?.() ?? []).map((line) => line.style?.text).join("");
-        const alike = cut.get(text) ?? new Set();
-        alike.add(String(label.style?.text));
-        cut.set(text, alike);
-      }
-      const alike = [...cut.entries()].filter(([, full]) => full.size > 1);
-      if (alike.length > 0) {
-        const [text = ""] = alike[0] ?? [];
-        const count = alike.reduce((sum, [, full]) => sum + full.size, 0);
-        findings.push(
-          finding(
-            `alike:${count}:${text}`,
-            (paths) =>
-              `${listed(paths, "", "axes")} ${verb(paths, "cuts its", "cut their")} category labels short ` +
-              `to fit, leaving ${count} of them alike, such as ${quote(text)}: use shorter names ` +
-              `that differ at the start${horizontal ? ", or a horizontal bar chart" : ""}.`,
-          ),
-        );
-      }
-    });
-  }
-  return merge(findings);
-}
-
-/** The matrix of an element without a transform. */
-const IDENTITY = [1, 0, 0, 1, 0, 0];
-
-/**
- * How many of the labels of an axis, in order along it, are drawn over the one before or after,
- * as those of an axis whose option shows them all are, where they are too wide for their room. Two
- * labels turned alike are compared in the frame of the first, where both are upright: a label
- * turned 45° takes less of the axis than the box around it.
- */
-function overlappingLabels(labels: Element[]): number {
-  const over = new Set<Element>();
-  for (let index = 1; index < labels.length; index++) {
-    const [a, b] = [labels[index - 1], labels[index]] as [Element, Element];
-    const [ma, mb] = [a.getComputedTransform() ?? IDENTITY, b.getComputedTransform() ?? IDENTITY];
-    const [cos = 1, sin = 0] = ma;
-    if (Math.abs(cos - (mb[0] ?? 1)) > 1e-6 || Math.abs(sin - (mb[1] ?? 0)) > 1e-6) continue;
-    // Where b is in a's frame: the offset between them turned back by their angle.
-    const [dx, dy] = [(mb[4] ?? 0) - (ma[4] ?? 0), (mb[5] ?? 0) - (ma[5] ?? 0)];
-    const own = a.getBoundingRect();
-    const other = b.getBoundingRect();
-    const box = {
-      x: other.x + cos * dx + sin * dy,
-      y: other.y - sin * dx + cos * dy,
-      width: other.width,
-      height: other.height,
-    };
-    if (overlap(own, box)) {
-      over.add(a);
-      over.add(b);
-    }
-  }
-  return over.size;
-}
-
-/** How far in pixels a text may reach past the edge of the chart, as by antialiasing. */
-const EDGE_SLACK = 1;
-
-/** Texts that reach past the edge of the chart, where they are cut off. */
-function cutOff(
-  texts: Text[],
-  model: Model,
-  base: JsonObject,
-  { width, height }: { width: number; height: number },
-): string[] {
-  const byOwner = new Map<string, { sides: Set<string>; texts: string[]; remedy: string }>();
-  const moving = new Set<number>();
-  const onGrid = new Set<number>();
-  model.eachRawSeries((series) => {
-    // The nodes of a force layout move into place over the frames to come.
-    if (series.subType === "graph" && series.get("layout") === "force") {
-      moving.add(series.componentIndex);
-    }
-    if (series.coordinateSystem?.type === "cartesian2d") onGrid.add(series.componentIndex);
-  });
-  for (const { owner, box, text, clipped } of texts) {
-    if (!owner || clipped || (owner.mainType === "series" && moving.has(owner.index))) continue;
-    const sides = [
-      box.x < -EDGE_SLACK && "left",
-      box.x + box.width > width + EDGE_SLACK && "right",
-      box.y < -EDGE_SLACK && "top",
-      box.y + box.height > height + EDGE_SLACK && "bottom",
-    ].filter((side): side is string => typeof side === "string");
-    if (sides.length === 0) continue;
-    const path = ownerPath(base, owner);
-    const remedy =
-      owner.mainType !== "series"
-        ? /^(?:x|y)Axis$/.test(owner.mainType)
-          ? 'leave the placement of the "grid" to the panel, which keeps the labels inside, or shorten them'
-          : 'place it within the chart with its "left", "right", "top" or "bottom", or shorten it'
-        : onGrid.has(owner.index)
-          ? 'leave room for them with the "grid", or move them inside, as with "position": "inside"'
-          : 'leave room for them with the series\' "left", "right", "top" or "bottom", or shorten them';
-    const entry = byOwner.get(path) ?? { sides: new Set(), texts: [], remedy };
-    for (const side of sides) entry.sides.add(side);
-    entry.texts.push(text);
-    byOwner.set(path, entry);
-  }
-  return [...byOwner.entries()].map(([path, { sides, texts, remedy }]) => {
-    const what =
-      texts.length === 1
-        ? `the text ${quote(texts[0] ?? "")}`
-        : `${texts.length} texts, such as ${quote(texts[0] ?? "")},`;
-    return `${path} has ${what} cut off at the ${[...sides].join(" and ")} edge of the chart: ${remedy}.`;
-  });
-}
-
-/** Whether two boxes overlap by more than a pixel or two each way. */
-const overlap = (a: Box, b: Box) =>
-  Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x) > 2 &&
-  Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y) > 2;
-
-/**
- * The slices of a pie or funnel whose labels ECharts leaves out for lack of room, as it does for
- * labels that would overlap, which no legend names instead.
- */
-function hiddenLabels(model: Model, base: JsonObject): string[] {
-  let legend = false;
-  model.eachComponent("legend", (component) => {
-    legend ||= component.get("show") !== false;
-  });
-  const warnings: string[] = [];
-  model.eachRawSeries((series) => {
-    if (legend || (series.subType !== "pie" && series.subType !== "funnel")) return;
-    const data = series.getData();
-    let labelled = 0;
-    let hidden = 0;
-    let example: string | undefined;
-    for (let index = 0; index < data.count(); index++) {
-      const label = data.getItemGraphicEl(index)?.getTextContent?.();
-      // Not of an item whose label the option hides, as for emphasis only.
-      if (!label || data.getItemModel(index).get(["label", "show"]) === false) continue;
-      labelled++;
-      if (label.ignore) {
-        hidden++;
-        example ??= data.getName(index);
-      }
-    }
-    if (hidden === 0) return;
-    const parts = series.subType === "pie" ? "slices" : "parts";
-    warnings.push(
-      `${componentPath(base, "series", series.componentIndex)} labels only ${labelled - hidden} of its ` +
-        `${labelled} ${parts}, leaving out the labels of the others, such as ${quote(example ?? "")}, ` +
-        `for lack of room: show fewer ${parts}, as the largest and an "Other" that sums up the rest.`,
-    );
-  });
-  return warnings;
-}
-
-/** The items of a series that a legend lists, rather than the series, by its type. */
-const LEGEND_ITEMS: Record<string, string> = {
-  themeRiver: "layers",
-  graph: "categories",
-  radar: "items",
-  chord: "nodes",
-};
-
-/** A legend that pages its entries, or that is drawn on top of the texts of other components. */
-function legends(views: Views, model: Model, base: JsonObject, texts: Text[]): string[] {
-  const warnings: string[] = [];
-  const types = new Set<string>();
-  model.eachRawSeries((series) => types.add(series.subType));
-  // What the entries of a legend name: the slices of a pie or funnel, the items of a series that
-  // lists them, as the layers of a theme river, or else the series.
-  const items = new Set([...types].map((type) => LEGEND_ITEMS[type] ?? "series"));
-  const remedy =
-    types.has("pie") || types.has("funnel")
-      ? 'show fewer slices, as the largest and an "Other" that sums up the rest'
-      : [...types].every((type) => type === "line")
-        ? 'show fewer series, or name each line at its end with "endLabel": {"show": true, ' +
-          '"formatter": "{a}"} instead of a legend'
-        : `show fewer ${items.size === 1 ? [...items][0] : "entries"}, or give them shorter names`;
-  model.eachComponent("legend", (legend) => {
-    if (legend.get("show") === false) return;
-    const path = componentPath(base, "legend", legend.componentIndex);
-    const view = views.getViewOfComponentModel(legend) as
-      | { _getPageInfo?(legend: object): { pageCount: number }; _backgroundEl?: Element }
-      | undefined;
-    const pages = view?._getPageInfo?.(legend).pageCount ?? 1;
-    if (pages > 1) {
-      warnings.push(
-        `${path} has more entries than fit the panel, which it pages through, ${pages} pages of ` +
-          `them, so that a reader sees only some at a time: ${remedy}.`,
-      );
-    }
-    const background = view?._backgroundEl;
-    if (!background) return;
-    const box = background.getBoundingRect().clone();
-    box.applyTransform(background.getComputedTransform());
-    const covered = texts.find(
-      ({ owner, box: other }) =>
-        owner && owner.mainType !== "legend" && owner.mainType !== "series" && overlap(box, other),
-    );
-    if (covered?.owner) {
-      warnings.push(
-        `${path} is drawn on top of ${ownerPath(base, covered.owner)} (${quote(covered.text)}): ` +
-          'place them apart with their "left", "right", "top" or "bottom", or leave those out of ' +
-          "the legend for the panel to place it.",
       );
     }
   });

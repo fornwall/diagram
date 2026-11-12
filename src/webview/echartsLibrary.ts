@@ -1,7 +1,6 @@
 // Loaded on the first chart. SVG gives sharp text and vector export but lacks canvas's
-// progressive/large-data optimizations. Omit maps (no map data), canvas and universal transitions
-// to reduce bundle size. Registering BrushComponent would restore the toolbox brush removed by
-// the panel's layout, so leave it out too.
+// progressive/large-data optimizations. Omit maps (no map data), brushes, canvas and universal
+// transitions to reduce bundle size.
 
 import {
   BarChart,
@@ -53,7 +52,6 @@ import {
 import { SeriesModel, use } from "echarts/core";
 import { AxisBreak, LabelLayout, LegacyGridContainLabel, ScatterJitter } from "echarts/features";
 import { SVGRenderer } from "echarts/renderers";
-import { ensureFontMeasureInfo, measureCharWidth } from "zrender/lib/contain/text.js";
 
 /** What ECharts' selection reads of a series and its data. */
 interface SelectableData {
@@ -174,18 +172,3 @@ use([
 ]);
 
 export { init } from "echarts/core";
-/** ZRender's cached drawn-text measurement, used for positioning. */
-export { getWidth as drawnWidth } from "zrender/lib/contain/text.js";
-
-/**
- * Match ECharts' wrapping measurement, which approximates non-ASCII character widths.
- * Use ZRender's per-font cache so layout and rendering agree.
- */
-export function textWidth(text: string, font: string): number {
-  const measures = ensureFontMeasureInfo(font);
-  let sum = 0;
-  for (let index = 0; index < text.length; index++) {
-    sum += measureCharWidth(measures, text.charCodeAt(index));
-  }
-  return sum;
-}

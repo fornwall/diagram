@@ -256,7 +256,7 @@ function valueText(value: unknown): string | undefined {
  * A date as a time axis labels it, in local time or in UTC: its day, and its time of day unless
  * midnight.
  */
-export function dateText(date: Date, utc = false): string {
+function dateText(date: Date, utc = false): string {
   if (Number.isNaN(date.getTime())) return "Invalid Date";
   const pad = (part: number) => String(part).padStart(2, "0");
   const [year, month, dayOfMonth, ...time] = utc
@@ -420,31 +420,6 @@ export class ChartItems {
     }
   }
 
-  /**
-   * Reads the items from a chart of a new layout of the same option, whose items go by the same
-   * names, rather than from the chart they were worked out in, which they would keep alive.
-   * Returns whether the chart has the same series, of as many items of each type, and else leaves
-   * the items as they are, to be worked out anew. The caller makes sure that the items have the
-   * same names: a timeline step can name as many items differently.
-   */
-  rebind(chart: ECharts.ECharts): boolean {
-    const model = modelOf(chart);
-    if (model.getSeriesCount() !== this.series.length) return false;
-    const datas: TypedData[][] = [];
-    let same = true;
-    model.eachRawSeries((series) => {
-      const index = series.componentIndex;
-      const next = typedData(series);
-      datas[index] = next;
-      same &&= this.series[index]?.holds(next) === true;
-    });
-    if (!same) return false;
-    datas.forEach((data, index) => {
-      this.series[index]?.rebind(data);
-    });
-    return true;
-  }
-
   /** The name of the series, when the chart has several. */
   seriesName(seriesIndex: number): string | undefined {
     return this.series[seriesIndex]?.prefix.slice(0, -1) || undefined;
@@ -585,28 +560,6 @@ class SeriesItems {
       count(id);
       if (label !== id) count(label);
     });
-  }
-
-  /** Whether the data holds as many items of each type as the items were worked out from. */
-  holds(datas: TypedData[]): boolean {
-    return (
-      datas.length === this.datas.length &&
-      datas.every((data, index) => {
-        const own = this.datas[index];
-        return (
-          own !== undefined &&
-          data.dataType === own.dataType &&
-          data.raw === own.raw &&
-          data.first === own.first &&
-          data.end === own.end
-        );
-      })
-    );
-  }
-
-  /** Reads the items from the same series in a new layout of the option, which has their names. */
-  rebind(datas: TypedData[]): void {
-    this.datas = datas;
   }
 
   each(callback: (item: Item) => void): void {

@@ -310,8 +310,6 @@ function describeImage(
     sentences.push(
       `The panel shows it at ${percent(panel.zoom)} in ${size(panel)}${unread}${across}.`,
     );
-  } else if (panel && panel.height < view.height) {
-    sentences.push(`The panel shows ${size(panel)} of it at a time, and scrolls the rest.`);
   }
   const text = sentences.join(" ");
   if (missing.length === 0) return text;

@@ -2,7 +2,6 @@ import * as assert from "node:assert";
 import { init as initECharts, registerAction } from "echarts";
 import type * as ECharts from "echarts/core";
 import { type ChartItems, modelOf } from "../webview/echartsItems";
-import { drawnWidth, textWidth } from "../webview/echartsLibrary";
 import { parseOption } from "../webview/echartsOption";
 import { EChartsRenderer } from "../webview/echartsRenderer";
 import { afterTest } from "./afterTest";
@@ -15,7 +14,7 @@ const marked = (dataIndex: number) => ({ ...item(dataIndex), notBlur: true });
 /** Exercise interaction updates without loading ECharts or constructing a browser document. */
 function interactionRenderer() {
   const actions: unknown[] = [];
-  let relayouts = 0;
+  let redraws = 0;
   const renderer = Object.create(EChartsRenderer.prototype) as EChartsRenderer;
   Object.assign(renderer, {
     chart: {
@@ -31,15 +30,12 @@ function interactionRenderer() {
     selectedKeys: new Set<string>(),
     shownSelected: [],
     selectionScheduled: false,
-    relayout: () => relayouts++,
+    redraw: () => redraws++,
   });
-  return { renderer, actions, relayouts: () => relayouts };
+  return { renderer, actions, redraws: () => redraws };
 }
 
-/**
- * A renderer that has drawn the option at 400 × 300 as the panel lays it out, its container, and
- * the internals that a test reaches into.
- */
+/** A renderer that has drawn the option at 400 × 300, its container, and the internals that a test reaches into. */
 function drawnRenderer(option: Record<string, unknown>) {
   const container = { clientWidth: 400, clientHeight: 300 };
   const renderer = Object.create(EChartsRenderer.prototype) as EChartsRenderer;
@@ -50,46 +46,24 @@ function drawnRenderer(option: Record<string, unknown>) {
         afterTest(() => chart.dispose());
         return chart;
       },
-      textWidth,
-      drawnWidth,
     },
     container,
     option,
-    title: "",
     theme: { colors: testColors, echarts: {} },
     annotation: { marks: [], dim: false },
     selectedKeys: new Set(),
     reducedMotion: { matches: true },
     tabHidden: () => false,
     focus: { chartChanged: () => {}, chartDrawn: () => {}, hide: () => {} },
-    laidOut: "",
   });
   const internals = renderer as unknown as {
-    apply(relayout: boolean): void;
+    apply(): void;
+    resize(): void;
     items(): ChartItems | undefined;
     chart: ECharts.ECharts;
   };
-  internals.apply(false);
+  internals.apply();
   return { container, renderer, internals };
-}
-
-/**
- * Draws the option, changes the chart as a user would, and lays it out again for another width as
- * a resize of the panel does, reading the chart before and after.
- */
-function relayout<T>(
-  option: Record<string, unknown>,
-  change: (chart: ECharts.ECharts) => void,
-  read: (chart: ECharts.ECharts) => T,
-): [T, T] {
-  const { container, renderer, internals } = drawnRenderer(option);
-  change(internals.chart);
-  const before = read(internals.chart);
-  container.clientWidth = 360;
-  // As for a size that the chart is laid out differently for, which a resize alone cannot draw.
-  Object.assign(renderer, { layout: undefined });
-  internals.apply(true);
-  return [before, read(internals.chart)];
 }
 
 suite("echartsRenderer", () => {
@@ -224,14 +198,14 @@ suite("echartsRenderer", () => {
     assert.deepStrictEqual(states(), marked);
   });
 
-  test("lays the chart out again when only the dimming changes", () => {
-    const { renderer, relayouts } = interactionRenderer();
+  test("draws the chart anew when only the dimming changes", () => {
+    const { renderer, redraws } = interactionRenderer();
     const marks = [{ id: "A", kind: "info" as const }];
     renderer.showMarks({ marks, dim: false });
     renderer.showMarks({ marks, dim: true });
-    assert.strictEqual(relayouts(), 1);
+    assert.strictEqual(redraws(), 1);
     renderer.showMarks({ marks, dim: false });
-    assert.strictEqual(relayouts(), 2);
+    assert.strictEqual(redraws(), 2);
   });
 
   test("marks an item by its id, not the first item of the same name", () => {
@@ -310,147 +284,6 @@ suite("echartsRenderer", () => {
     }
   });
 
-  test("keeps a force layout, a drilled-down treemap and expanded tree nodes in a new layout", () => {
-    const nodes = ["A", "B", "C", "D", "E"].map((name) => ({ name }));
-    const links = [
-      { source: "A", target: "B" },
-      { source: "B", target: "C" },
-      { source: "C", target: "D" },
-    ];
-    // Laid out at once rather than over frames, to read where the nodes end up.
-    const graph = { type: "graph", layout: "force", force: { layoutAnimation: false } };
-    const [placed, kept] = relayout(
-      { series: [{ ...graph, data: nodes, links }] },
-      () => {},
-      (chart) => ({ ...modelOf(chart).getSeriesByIndex(0)?.preservedPoints }),
-    );
-    // A force layout goes on from where it left the nodes, rather than from random places.
-    assert.deepStrictEqual(kept, placed);
-
-    const tree = {
-      name: "root",
-      children: [
-        { name: "a", children: [{ name: "a1", value: 1 }] },
-        { name: "b", value: 1 },
-      ],
-    };
-    const viewRoot = (chart: ECharts.ECharts) =>
-      modelOf(chart).getSeriesByIndex(0)?.getViewRoot?.().dataIndex;
-    for (const type of ["treemap", "sunburst"]) {
-      const [drilled, still] = relayout(
-        { series: [{ type, data: [tree] }] },
-        (chart) =>
-          chart.dispatchAction({ type: `${type}RootToNode`, seriesIndex: 0, targetNodeId: "a" }),
-        viewRoot,
-      );
-      assert.strictEqual(drilled, 2, type);
-      assert.strictEqual(still, drilled, type);
-    }
-
-    const expanded = (chart: ECharts.ECharts) => {
-      const data = modelOf(chart).getSeriesByIndex(0)?.getRawData();
-      return [1, 2].map((index) => data?.tree?.getNodeByDataIndex(index).isExpand);
-    };
-    const [toggled, same] = relayout(
-      { series: [{ type: "tree", data: [tree] }] },
-      (chart) =>
-        chart.dispatchAction({ type: "treeExpandAndCollapse", seriesIndex: 0, dataIndex: 2 }),
-      expanded,
-    );
-    assert.deepStrictEqual(toggled, [true, false]);
-    assert.deepStrictEqual(same, toggled);
-  });
-
-  test("keeps the legend selection and zoom that the user changed in a new layout", () => {
-    const option = {
-      xAxis: { type: "category", data: ["a", "b", "c", "d"] },
-      yAxis: {},
-      dataZoom: [{ type: "inside", startValue: 1, endValue: 2 }],
-      series: ["One", "Two"].map((name) => ({ type: "bar", name, data: [1, 2, 3, 4] })),
-    };
-    const [changed, kept] = relayout(
-      option,
-      (chart) => {
-        chart.dispatchAction({ type: "legendUnSelect", name: "Two" });
-        chart.dispatchAction({ type: "dataZoom", start: 25, end: 75 });
-      },
-      (chart) => {
-        const { legend, dataZoom } = chart.getOption() as Record<string, Record<string, unknown>[]>;
-        return { selected: legend?.[0]?.selected, start: dataZoom?.[0]?.start };
-      },
-    );
-    assert.deepStrictEqual(changed, { selected: { One: true, Two: false }, start: 25 });
-    assert.deepStrictEqual(kept, changed);
-  });
-
-  test("only resizes a chart for a size that it is laid out the same for", () => {
-    const labels = ["Category A", "Category B", "Category C"];
-    const { container, renderer, internals } = drawnRenderer({
-      xAxis: { type: "category", data: labels },
-      yAxis: {},
-      series: [{ type: "bar", data: [1, 2, 3] }],
-    });
-    const { chart } = internals;
-    let setOptions = 0;
-    const setOption = chart.setOption.bind(chart);
-    chart.setOption = ((option: ECharts.EChartsCoreOption, settings: boolean) => {
-      setOptions++;
-      return setOption(option, settings);
-    }) as typeof chart.setOption;
-    // The labels fit either way.
-    container.clientWidth = 380;
-    internals.apply(true);
-    assert.strictEqual(setOptions, 0);
-    assert.strictEqual(chart.getWidth(), 380);
-    // The labels no longer fit side by side.
-    container.clientWidth = 200;
-    internals.apply(true);
-    assert.strictEqual(setOptions, 1);
-    // Dimming around marks takes a layout of its own.
-    Object.assign(renderer, {
-      annotation: { marks: [{ id: "Category A", kind: "info" }], dim: true },
-    });
-    container.clientWidth = 210;
-    internals.apply(true);
-    assert.strictEqual(setOptions, 2);
-  });
-
-  test("checks a chart's data once, and at a new size only how it is laid out", async () => {
-    // Of more points than a layout is checked for, one of them unreadable.
-    const points: unknown[][] = Array.from({ length: 6000 }, (_, x) => [x, x % 7]);
-    points[3] = [3, "n/a"];
-    const option = {
-      xAxis: { type: "value" },
-      yAxis: {},
-      series: [{ type: "scatter", data: points }],
-    };
-    const { container, renderer, internals } = drawnRenderer(option);
-    Object.assign(container, { hidden: true, scrollTop: 0, setAttribute: () => {} });
-    Object.assign(renderer, {
-      canvas: { classList: { add: () => {} }, dispatchEvent: () => true },
-      resizeObserver: { observe: () => {}, unobserve: () => {} },
-    });
-    await renderer.render(JSON.stringify(option), "");
-    const warned = renderer.warnings();
-    assert.match(warned.join("\n"), /cannot read as a number, such as "n\/a"/);
-    const data = Object.getPrototypeOf(modelOf(internals.chart).getSeriesByIndex(0)?.getRawData());
-    const { getRawDataItem } = data;
-    let reads = 0;
-    data.getRawDataItem = function (this: unknown, index: number) {
-      reads++;
-      return getRawDataItem.call(this, index);
-    };
-    try {
-      container.clientWidth = 380;
-      (renderer as unknown as { relayout(): void }).relayout();
-    } finally {
-      data.getRawDataItem = getRawDataItem;
-    }
-    assert.strictEqual(internals.chart.getWidth(), 380);
-    assert.strictEqual(reads, 0);
-    assert.deepStrictEqual(renderer.warnings(), warned);
-  });
-
   test("names the callback of the option that throws, as the chart is drawn or used", async () => {
     const { renderer, container } = drawnRenderer({
       series: [{ type: "pie", data: [{ name: "A", value: 1 }] }],
@@ -516,47 +349,6 @@ suite("echartsRenderer", () => {
     assert.deepStrictEqual(renderer.warnings(), []);
   });
 
-  test("checks a chart drawn for an image at a new size there, though its size has not settled", async () => {
-    const departments = Array.from({ length: 30 }, (_, index) => `Department number ${index}`);
-    const option = {
-      xAxis: { type: "category", data: departments },
-      yAxis: {},
-      series: [{ type: "bar", data: departments.map((_, index) => index) }],
-    };
-    /** The warnings of a renderer that drew the chart at a width. */
-    const drawnAt = async (width: number) => {
-      const drawn = drawnRenderer(option);
-      Object.assign(drawn.container, {
-        clientWidth: width,
-        hidden: true,
-        scrollTop: 0,
-        setAttribute: () => {},
-        querySelector: () => ({}),
-      });
-      Object.assign(drawn.renderer, {
-        canvas: { classList: { add: () => {} }, dispatchEvent: () => true },
-        resizeObserver: { observe: () => {}, unobserve: () => {} },
-      });
-      drawn.internals.chart.resize({ width, height: 300 });
-      await drawn.renderer.render(JSON.stringify(option), "");
-      return drawn;
-    };
-    const narrow = (await drawnAt(250)).renderer.warnings();
-    const { container, renderer, internals } = await drawnAt(400);
-    assert.notDeepStrictEqual(renderer.warnings(), narrow);
-    // The panel narrowed, and the chart was resized, but is laid out once that settles.
-    const settle = setTimeout(() => {}, 60_000);
-    afterTest(() => clearTimeout(settle));
-    Object.assign(renderer, { relayoutTimer: settle });
-    container.clientWidth = 250;
-    const still = (
-      renderer as unknown as { still(marked: boolean, draw: () => void): Promise<void> }
-    ).still;
-    await still.call(renderer, true, () => {});
-    assert.strictEqual(internals.chart.getWidth(), 250);
-    assert.deepStrictEqual(renderer.warnings(), narrow);
-  });
-
   test("draws a chart anew that ECharts left refusing every option by throwing in an action", () => {
     // An action whose handler throws, as ECharts' own can on an option it did not foresee.
     registerAction({ type: "diagramTestThrow", event: "diagramTestThrow", update: "none" }, () => {
@@ -567,19 +359,17 @@ suite("echartsRenderer", () => {
     const [stuck, fresh] = [ssr(), ssr()];
     const renderer = Object.create(EChartsRenderer.prototype) as EChartsRenderer;
     Object.assign(renderer, {
-      echarts: { textWidth, drawnWidth },
+      echarts: {},
       chart: stuck,
       createChart: () => fresh,
       container: { clientWidth: 400, clientHeight: 300 },
       option: { series: [{ type: "pie", data: [{ name: "A", value: 1 }] }] },
-      title: "",
       theme: { colors: testColors, echarts: {} },
       annotation: { marks: [], dim: false },
       selectedKeys: new Set(),
       reducedMotion: { matches: true },
       tabHidden: () => false,
       focus: { chartChanged: () => {}, hide: () => {} },
-      laidOut: "",
     });
     const guard = (action: () => void) =>
       (renderer as unknown as { guard(action: () => void): void }).guard(action);
@@ -607,36 +397,18 @@ suite("echartsRenderer", () => {
 
   test("works out the items of another timeline step anew", () => {
     const slices = (...names: string[]) => [{ data: names.map((name) => ({ name, value: 1 })) }];
-    /** A renderer of a chart whose timeline steps show other items, and how to find them. */
-    const timelineRenderer = () => {
-      const drawn = drawnRenderer({
-        baseOption: { timeline: { data: ["2025", "2026"] }, series: [{ type: "pie" }] },
-        options: [{ series: slices("Apples", "Pears") }, { series: slices("Kiwis", "Plums") }],
-      });
-      const find = (name: string) => drawn.internals.items()?.find(name);
-      assert.deepStrictEqual(find("Apples"), [item(0)]);
-      return { ...drawn, find };
-    };
-    // The user steps the timeline: its event drops the items, also when the layout stays.
-    const stepped = timelineRenderer();
-    stepped.internals.chart.dispatchAction({ type: "timelineChange", currentIndex: 1 });
-    assert.deepStrictEqual(stepped.find("Kiwis"), [item(0)]);
-    stepped.container.clientWidth = 380;
-    stepped.internals.apply(true);
-    assert.deepStrictEqual(stepped.find("Kiwis"), [item(0)]);
-    assert.deepStrictEqual(stepped.find("Apples"), []);
-    // A step shown without the event, which a new layout must not take the items of the last for.
-    const shown = timelineRenderer();
-    shown.internals.chart.setOption({ timeline: { currentIndex: 1 } } as ECharts.EChartsCoreOption);
-    // As for a size that the chart is laid out differently for.
-    Object.assign(shown.renderer, { layout: undefined });
-    shown.container.clientWidth = 200;
-    shown.internals.apply(true);
-    assert.deepStrictEqual(shown.find("Kiwis"), [item(0)]);
-    assert.deepStrictEqual(shown.find("Apples"), []);
+    const { internals } = drawnRenderer({
+      baseOption: { timeline: { data: ["2025", "2026"] }, series: [{ type: "pie" }] },
+      options: [{ series: slices("Apples", "Pears") }, { series: slices("Kiwis", "Plums") }],
+    });
+    const find = (name: string) => internals.items()?.find(name);
+    assert.deepStrictEqual(find("Apples"), [item(0)]);
+    internals.chart.dispatchAction({ type: "timelineChange", currentIndex: 1 });
+    assert.deepStrictEqual(find("Kiwis"), [item(0)]);
+    assert.deepStrictEqual(find("Apples"), []);
   });
 
-  test("updates items when resizing crosses a media query without changing the layout", () => {
+  test("updates items when resizing crosses a media query", () => {
     const slices = (...names: string[]) => [{ data: names.map((name) => ({ name, value: 1 })) }];
     const { container, internals } = drawnRenderer({
       baseOption: { series: [{ type: "pie" }] },
@@ -652,7 +424,7 @@ suite("echartsRenderer", () => {
       [400, "Apples", "Kiwis"],
     ] as const) {
       container.clientWidth = width;
-      internals.apply(true);
+      internals.resize();
       assert.strictEqual(internals.chart.getWidth(), width);
       assert.deepStrictEqual(find(shown), [item(0)]);
       assert.deepStrictEqual(find(hidden), []);

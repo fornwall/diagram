@@ -402,7 +402,7 @@ suite("tools", () => {
         await view({}, chart),
       ],
       [
-        "The chart: all of it, laid out for the panel at 800×1400 px, at 82% in this 656×1148 px image. The panel shows 800×600 px of it at a time, and scrolls the rest.",
+        "The chart: all of it, laid out for the panel at 800×1400 px, at 82% in this 656×1148 px image.",
         "The chart: all of it, laid out at 800×1400 px, at 82% in this 656×1148 px image.",
       ],
     );

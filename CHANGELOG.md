@@ -5,6 +5,7 @@
 - Six tools instead of twenty: render (now also from a file), edit, get state, get image, annotate and guide. Agents use their own tools to read files and run commands, and draw charts as ECharts options.
 - Removed the data-to-chart pipeline, Chart Options, Refresh, HTML export, drag-out, Highlight Path, picks, walkthroughs, drafts, checkpoints, evidence and graph tools.
 - The Diagram agent may use any tool.
+- Charts are drawn as their option says, without the panel re-laying them out.
 
 ## 0.11.0
 

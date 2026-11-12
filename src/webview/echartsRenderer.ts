@@ -1,13 +1,10 @@
-// Renders Apache ECharts options, given as JSON or JavaScript, adapted to the panel size and
-// VS Code theme. Charts draw as SVG; see src/webview/echartsLibrary.ts for why.
+// Renders Apache ECharts options, given as JSON or JavaScript, in the VS Code theme. Charts draw
+// as SVG; see src/webview/echartsLibrary.ts for why.
 
 import type * as ECharts from "echarts/core";
 import { type Annotation, errorMessage, type RepeatedName } from "../protocol";
 import type { ThemeColors } from "./colors";
-import { toolWarnings } from "./echartsAround";
-import { capWarnings, dataWarnings, itemCount, layoutWarnings } from "./echartsChecks";
-import { cloneOption, sameLayout } from "./echartsClone";
-import { minimumHeight } from "./echartsFacets";
+import { capWarnings, dataWarnings } from "./echartsChecks";
 import { ChartFocus, ChartNavigation } from "./echartsFocus";
 import {
   ChartItems,
@@ -19,17 +16,9 @@ import {
   openDataView,
   parseItemKey,
 } from "./echartsItems";
-import { disableAnimation, focusHighlighted, layoutOption } from "./echartsLayout";
 import type * as EChartsLibrary from "./echartsLibrary";
 import { loadECharts } from "./echartsLoader";
-import {
-  type JsonObject,
-  optionVariants,
-  optionWarnings,
-  parseOption,
-  seriesTypes,
-} from "./echartsOption";
-import { keepUserState, modelState } from "./echartsState";
+import { type JsonObject, optionWarnings, parseOption, seriesTypes } from "./echartsOption";
 import { buildEChartsTheme } from "./echartsTheme";
 import type { DiagramImage, ModelImage } from "./images";
 import { describeCallbackError, formatOption } from "./optionSource";
@@ -50,16 +39,6 @@ import {
   withTextIn,
 } from "./svgImage";
 import { readThemeColors } from "./vscodeTheme";
-
-/** How long the size of a chart stays the same before it is laid out for it, rather than resized. */
-export const SETTLE_DELAY = 150;
-/**
- * How long resizing a chart may take for it to be resized in each frame while its size keeps
- * changing, as when dragging the splitter: about two frames.
- */
-const RESIZE_BUDGET = 30;
-/** The items of a chart up to which its layout is checked, which draws it a second time. */
-const MAX_LAYOUT_CHECKED_ITEMS = 5_000;
 
 /** A zrender element, which can animate, and the group it is in. */
 interface Animated {
@@ -108,22 +87,11 @@ export class EChartsRenderer implements Renderer {
   private source = "";
   /** What the callbacks of the option threw once the chart was drawn, such as on hovering an item. */
   private callbackWarnings: string[] = [];
-  /** What the chart draws of its data other than its option meant, which no size changes. */
+  /** What the chart draws of its data other than its option meant. */
   private dataWarnings: string[] = [];
-  /** What the chart lays out other than its option meant, at the size it was checked at. */
-  private layoutWarnings: string[] = [];
-  private checkedAt = "";
-  private title = "";
-  /** The size, motion preference and blur of the last layout, which decide whether to lay out again. */
-  private laidOut = "";
-  /**
-   * The last layout of the option, before the changes that setting it brings, which shares the
-   * option's data: a new layout that is the same only needs the chart resized.
-   */
-  private layout: JsonObject | undefined;
   private selectedKeys: ReadonlySet<string> = new Set();
   private selectionScheduled = false;
-  /** The marks an agent put on the chart, which a new layout dispatches again. */
+  /** The marks an agent put on the chart, which drawing it anew dispatches again. */
   private annotation: Annotation = UNMARKED;
   private hasHighlights = false;
   /** What ECharts shows as selected, as last reported by its selectchanged event. */
@@ -133,23 +101,16 @@ export class EChartsRenderer implements Renderer {
    * nothing to animate as it is set, before the focus is told that the chart changed.
    */
   private drawnWhileApplying = false;
-  /** The height of a drawing taller than the container, which scrolls it. */
-  private scrolledHeight: number | undefined;
-  /** Whether the next chart is another, to show from its top. */
-  private scrollToStart = false;
   private resizeFrame = 0;
-  private relayoutTimer: ReturnType<typeof setTimeout> | undefined;
-  /** Whether resizing the chart took longer than the budget since its size started changing. */
-  private resizesSlowly = false;
   private readonly reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
-  private readonly resizeObserver = new ResizeObserver(() => this.scheduleRelayout());
+  private readonly resizeObserver = new ResizeObserver(() => this.scheduleResize());
 
   constructor(
     private readonly itemClicked: ItemClickHandler,
     private readonly canvas: HTMLElement,
     /**
      * Whether the tab is hidden behind another. Its page then has the size of an empty frame, 300
-     * by 150 pixels, which a chart is not laid out for.
+     * by 150 pixels, which a chart is not resized to.
      */
     private readonly tabHidden: () => boolean,
   ) {
@@ -181,7 +142,7 @@ export class EChartsRenderer implements Renderer {
     new MutationObserver(() => {
       if (this.chart) openDataView(this.chart)?.classList.add("chart-data-view");
     }).observe(this.drawing, { childList: true });
-    this.reducedMotion.addEventListener("change", () => this.relayout());
+    this.reducedMotion.addEventListener("change", () => void this.themeChanged());
     // ECharts lets what a callback throws in a handler of its own, such as a tooltip's formatter
     // on hovering an item, through to the page.
     window.addEventListener("error", ({ error }) => this.reportCallbackError(error));
@@ -195,12 +156,11 @@ export class EChartsRenderer implements Renderer {
     this.option = option;
     this.source = source;
     this.callbackWarnings = [];
-    this.title = title;
     this.container.setAttribute("aria-label", title.trim() || "Chart");
     this.selectedKeys = new Set();
     this.annotation = UNMARKED;
     try {
-      this.apply(false);
+      this.apply();
     } catch (error) {
       // A failed setOption can leave the instance broken: start over.
       this.disposeChart();
@@ -210,12 +170,6 @@ export class EChartsRenderer implements Renderer {
       );
     }
     this.dataWarnings = this.checkData(option);
-    this.layoutWarnings = this.checkLayout(option);
-    this.checkedAt = this.chartSize();
-    if (this.scrollToStart) {
-      this.scrollToStart = false;
-      this.container.scrollTop = 0;
-    }
     // ResizeObserver reports a size in a frame when it differs from the one it reported last, so it
     // misses a container that changes size and back between frames, such as for a status line
     // shown while rendering, or a hidden view shown again. Observing anew reports the size in the
@@ -225,12 +179,8 @@ export class EChartsRenderer implements Renderer {
     return seriesTypes(option);
   }
 
-  /**
-   * Shows another chart from its top, and its keyboard focus from its first item, where a revision
-   * keeps the scroll of a tall chart and the focused item.
-   */
+  /** Shows the keyboard focus of another chart from its first item, where a revision keeps it. */
   fitToPanel(): void {
-    this.scrollToStart = true;
     this.focus.forget();
   }
 
@@ -241,8 +191,6 @@ export class EChartsRenderer implements Renderer {
     this.source = "";
     this.callbackWarnings = [];
     this.dataWarnings = [];
-    this.layoutWarnings = [];
-    this.scrolls(undefined);
     this.container.hidden = true;
     this.canvas.classList.remove("chart-mode");
   }
@@ -270,10 +218,9 @@ export class EChartsRenderer implements Renderer {
 
   warnings(): string[] {
     return capWarnings([
-      ...(this.option ? [...optionWarnings(this.option), ...toolWarnings(this.option)] : []),
+      ...(this.option ? optionWarnings(this.option) : []),
       ...(this.items()?.warnings ?? []),
       ...this.dataWarnings,
-      ...this.layoutWarnings,
       ...this.callbackWarnings,
     ]);
   }
@@ -286,10 +233,7 @@ export class EChartsRenderer implements Renderer {
     warningsMayChange(this.canvas);
   }
 
-  /**
-   * What the chart draws of its data other than the option meant, which a failing check leaves
-   * unsaid: the same at any size, unlike how the chart is laid out.
-   */
+  /** What the chart draws of its data other than the option meant, which a failing check leaves unsaid. */
   private checkData(option: JsonObject): string[] {
     try {
       return this.chart ? dataWarnings(this.chart, option) : [];
@@ -299,46 +243,13 @@ export class EChartsRenderer implements Renderer {
     }
   }
 
-  /**
-   * What the chart lays out other than the option meant, which a failing check leaves unsaid,
-   * read from a copy drawn without animation, at the same size, as the chart starts what it
-   * animates where the animation moves it from, unless it has too many items to draw twice.
-   */
-  private checkLayout(option: JsonObject): string[] {
-    const { chart, echarts, theme, layout } = this;
-    if (!chart || !echarts || !theme || !layout) return [];
-    const warnings: string[] = [];
-    try {
-      if (itemCount(chart) > MAX_LAYOUT_CHECKED_ITEMS) return warnings;
-      const width = chart.getWidth();
-      const height = chart.getHeight();
-      const still = echarts.init(null, theme.echarts, {
-        renderer: "svg",
-        ssr: true,
-        width,
-        height,
-      });
-      try {
-        const copy = cloneOption(layout);
-        disableAnimation(copy);
-        still.setOption(copy, { notMerge: true });
-        warnings.push(...layoutWarnings(still, option));
-      } finally {
-        still.dispose();
-      }
-    } catch (error) {
-      console.error(error);
-    }
-    return warnings;
-  }
-
   showMarks(annotation: Annotation): void {
     const wasBlurring = this.blurring();
     const previousIds = new Set(this.annotation.marks.map(({ id }) => id));
     this.annotation = annotation;
-    // Only dimming changes the option; relayout applies the highlights itself.
+    // Only dimming changes the option; redraw applies the highlights itself.
     if (this.blurring() !== wasBlurring) {
-      this.relayout();
+      this.redraw();
     } else if (
       previousIds.size !== annotation.marks.length ||
       annotation.marks.some(({ id }) => !previousIds.has(id))
@@ -361,28 +272,28 @@ export class EChartsRenderer implements Renderer {
 
   async themeChanged(): Promise<void> {
     this.theme = undefined;
-    this.relayout();
+    this.redraw();
   }
 
   /**
-   * Lays the chart out again once its tab is shown. The resize observer reports nothing if the tab
-   * is shown at the size it last reported, though the chart was laid out for another while hidden.
+   * Resizes the chart once its tab is shown. The resize observer reports nothing if the tab is
+   * shown at the size it last reported, though the chart kept its size while hidden.
    */
   tabShown(): void {
-    this.scheduleRelayout();
+    this.scheduleResize();
   }
 
   /**
-   * An image of the chart as laid out for its current size, with its animations finished, so that
-   * an early export includes every item, and without what the pointer and the toolbox add to it.
+   * An image of the chart at the size of the panel, with its animations finished, so that an early
+   * export includes every item, and without what the pointer and the toolbox add to it.
    */
   async toImage(background: string): Promise<DiagramImage> {
     return this.still(true, (svg) => standaloneSvg(svg, background));
   }
 
   /**
-   * The chart as {@link toImage} draws it, as laid out for the panel, but as its option alone draws
-   * it, without the selection and the marks, as a Mermaid diagram's image is. The area around
+   * The chart as {@link toImage} draws it, but as its option alone draws it, without the selection
+   * and the marks, as a Mermaid diagram's image is. The area around
    * items takes in the text it cuts into, such as their labels on an axis.
    */
   async modelImage(background: string, ids: readonly string[]): Promise<ModelImage> {
@@ -426,12 +337,8 @@ export class EChartsRenderer implements Renderer {
     marked: boolean,
     draw: (svg: SVGSVGElement, chart: ECharts.ECharts) => T,
   ): Promise<T> {
-    // Export can precede the resize observer or its debounced layout after changing views: lay out
-    // for the size now, and check it there, which leaves nothing to do once it settles. Hidden
-    // charts keep the dimensions of their last visible rendering.
-    if (this.chart) this.apply(true);
-    this.cancelRelayout();
-    this.checkSize();
+    // Export can precede the resize observer after changing views.
+    this.resize();
     const chart = this.chart;
     const svg = this.container.querySelector("svg");
     if (!chart || !svg) throw new Error("There is no chart to make an image of.");
@@ -489,15 +396,18 @@ export class EChartsRenderer implements Renderer {
     return formatOption(source);
   }
 
-  private createChart(
-    echarts: typeof EChartsLibrary,
-    theme: object,
-    width: number,
-    height: number,
-  ): ECharts.ECharts {
+  private createChart(echarts: typeof EChartsLibrary, theme: object): ECharts.ECharts {
+    // Source view has no size, and a hidden tab none to go by: the resize observer fits the chart
+    // once shown.
+    const { clientWidth, clientHeight } = this.container;
+    const sized = !this.tabHidden() && clientWidth > 0 && clientHeight > 0;
     // The SVG renderer is registered in echartsLibrary.ts, but each instance still has to ask for
     // it: ECharts draws on a canvas unless told otherwise.
-    const chart = echarts.init(this.drawing, theme, { renderer: "svg", width, height });
+    const chart = echarts.init(this.drawing, theme, {
+      renderer: "svg",
+      width: sized ? clientWidth : 800,
+      height: sized ? clientHeight : 500,
+    });
     chart.on("click", (params: ECharts.ECElementEvent) => {
       if (params.componentType !== "series") {
         return;
@@ -544,9 +454,7 @@ export class EChartsRenderer implements Renderer {
     // The toolbox's restore makes the chart's model anew from the option, without the selection,
     // and back at a timeline's first step: select the items again.
     chart.on("restore", () => {
-      if (optionVariants(this.option ?? {}).length > 1 || !this.chartItems?.rebind(chart)) {
-        this.chartItems = undefined;
-      }
+      this.chartItems = undefined;
       this.shownSelected = [];
       this.scheduleSelection();
     });
@@ -566,86 +474,25 @@ export class EChartsRenderer implements Renderer {
   private disposeChart(): void {
     this.focus.hide();
     cancelAnimationFrame(this.resizeFrame);
-    this.cancelRelayout();
     this.chart?.dispose();
     this.chart = undefined;
     this.chartItems = undefined;
     this.shownSelected = [];
     this.hasHighlights = false;
-    this.laidOut = "";
-    this.layout = undefined;
   }
 
-  /**
-   * Sets the option, laid out for the current size and theme. A relayout of the shown chart keeps
-   * what the user changed in it, does not animate, and is skipped when the layout stays the same.
-   */
-  private apply(relayout: boolean): void {
+  /** Sets the option, on a chart made anew for another theme. */
+  private apply(): void {
     const echarts = this.echarts;
     if (!echarts) {
       return;
     }
     // As after ECharts threw in a handler of its own, such as of a click.
     if (this.chart && stuck(this.chart)) this.disposeChart();
-    // Source view has no DOM dimensions, and a hidden tab none to go by. Keep an existing chart's
-    // size, or use an initial size for both the SVG and its layout; the resize observer fits it
-    // when the rendering is shown.
-    const measured = this.tabHidden() ? { width: 0, height: 0 } : this.drawingSize();
-    const width = measured.width || this.chart?.getWidth() || 800;
-    const height = measured.height || this.chart?.getHeight() || 500;
-    const reducedMotion = this.reducedMotion.matches;
-    // What the layout is drawn with besides the option laid out.
-    const look = `${reducedMotion}:${this.blurring()}`;
-    const laidOut = `${width}:${height}:${look}`;
-    // Check layout inputs before copying the data. Retaining a serialized option would also
-    // duplicate every data point in memory just to detect unchanged layouts.
-    if (relayout && this.theme && laidOut === this.laidOut) {
-      // The chart may still have the size it was resized to meanwhile.
-      this.resizeChart();
-      return;
-    }
-    const themeChanged = !this.theme && this.chart !== undefined;
     if (!this.theme) {
       const colors = readThemeColors();
-      this.theme = { colors, echarts: buildEChartsTheme(colors) };
-    }
-    const context = {
-      width,
-      height,
-      title: this.title,
-      colors: this.theme.colors,
-      reducedMotion,
-      textWidth: echarts.textWidth,
-      drawnWidth: echarts.drawnWidth,
-    };
-    const layout = layoutOption(this.option ?? {}, context);
-    // Many charts are laid out the same for another size, such as one that only fills the space,
-    // or whose labels fit either way: resizing draws them as a layout would, keeping what the user
-    // changed, without setting the option and drawing the chart anew, which takes long for a
-    // large one. Not for another theme, motion preference or blur, of which the layout is not all.
-    const sameLook = !themeChanged && this.laidOut.endsWith(`:${look}`);
-    if (relayout && sameLook && sameLayout(layout, this.layout)) {
-      this.laidOut = laidOut;
-      this.resizeChart();
-      return;
-    }
-    this.layout = layout;
-    // A copy to set, which the changes below make for this chart alone.
-    const option = cloneOption(layout);
-    if (relayout) {
-      disableAnimation(option);
-    }
-    if (this.blurring()) {
-      focusHighlighted(option);
-    }
-    const shown = relayout ? this.chart : undefined;
-    if (shown) {
-      keepUserState(option, modelOf(shown).option);
-    }
-    const restoreState = shown && modelState(shown);
-    if (themeChanged) {
-      // An instance draws in the theme it was made with, and setTheme would make a new model,
-      // without the state handed over below.
+      this.theme = { colors, echarts: buildEChartsTheme(colors, this.reducedMotion.matches) };
+      // An instance draws in the theme it was made with.
       this.chart?.dispose();
       this.chart = undefined;
     } else if (this.chart) {
@@ -655,23 +502,16 @@ export class EChartsRenderer implements Renderer {
       // as each highlight and downplay does, here of no series.
       this.chart.dispatchAction({ type: "downplay", seriesIndex: [] }, { silent: true });
     }
-    this.chart ??= this.createChart(echarts, this.theme.echarts, width, height);
+    this.chart ??= this.createChart(echarts, this.theme.echarts);
     this.drawnWhileApplying = false;
-    if (restoreState) {
-      // The state goes to the model of the option before it is laid out, and resize draws it.
-      this.chart.setOption(option, { notMerge: true, lazyUpdate: true });
-      restoreState(this.chart);
-      this.chart.resize({ width, height });
-    } else {
-      this.chart.setOption(option, { notMerge: true });
+    this.chart.setOption(this.option ?? {}, { notMerge: true });
+    if (this.blurring()) {
+      // ECharts blurs the rest of a chart around a highlight only by emphasis.focus.
+      const count = modelOf(this.chart).getSeriesCount();
+      const series = Array.from({ length: count }, () => ({ emphasis: { focus: "self" } }));
+      this.chart.setOption({ series });
     }
-    this.laidOut = laidOut;
-    // The items name the data of the model of the previous option, which they would keep alive. A
-    // new layout of the same option has the same items, which take a while to work out for a large
-    // chart: read them from its own model instead. Not for an option whose timeline steps or media
-    // queries set other data, of which the chart may show another now than when they were.
-    const sameItems = relayout && optionVariants(this.option ?? {}).length === 1;
-    if (!sameItems || !this.chartItems?.rebind(this.chart)) this.chartItems = undefined;
+    this.chartItems = undefined;
     this.shownSelected = [];
     this.syncSelection();
     this.highlightMarks();
@@ -736,7 +576,7 @@ export class EChartsRenderer implements Renderer {
 
   /** The items that go by the ids. */
   private find(ids: string[]): ItemRef[] {
-    // Each layout calls this, and working out the items of a large chart takes a while.
+    // Each drawing calls this, and working out the items of a large chart takes a while.
     if (ids.length === 0) return [];
     const items = this.items();
     return ids.flatMap((id) => items?.find(id) ?? []);
@@ -748,30 +588,9 @@ export class EChartsRenderer implements Renderer {
     return this.chartItems;
   }
 
-  /** Lays out the shown chart again, keeping what is shown if that fails. */
-  private relayout(): void {
-    if (!this.chart || !this.option) return;
-    this.guard(() => this.apply(true));
-    this.checkSize();
-  }
-
-  /**
-   * Checks how the chart is laid out again at a new size: what it leaves out for lack of room,
-   * such as category labels, goes by its size. Not at each size it has while the size keeps
-   * changing.
-   */
-  private checkSize(): void {
-    const size = this.chartSize();
-    if (this.option && size && size !== this.checkedAt && this.relayoutTimer === undefined) {
-      this.checkedAt = size;
-      this.layoutWarnings = this.checkLayout(this.option);
-      warningsMayChange(this.canvas);
-    }
-  }
-
-  /** The size the chart is drawn at, if any. */
-  private chartSize(): string {
-    return this.chart ? `${this.chart.getWidth()}×${this.chart.getHeight()}` : "";
+  /** Draws the shown chart anew, keeping what is shown if that fails. */
+  private redraw(): void {
+    if (this.chart && this.option) this.guard(() => this.apply());
   }
 
   /**
@@ -788,7 +607,7 @@ export class EChartsRenderer implements Renderer {
       if (!this.chart || !stuck(this.chart)) return;
       this.disposeChart();
       try {
-        this.apply(false);
+        this.apply();
       } catch (again) {
         console.error(again);
         this.disposeChart();
@@ -796,76 +615,20 @@ export class EChartsRenderer implements Renderer {
     }
   }
 
-  private scheduleRelayout(): void {
+  private scheduleResize(): void {
     cancelAnimationFrame(this.resizeFrame);
-    this.resizeFrame = requestAnimationFrame(() => {
-      // A change of size, such as showing the chart again, is laid out at once, as only resizing
-      // a layout for another size can squeeze labels to a letter. While the size keeps changing,
-      // as when dragging the splitter, the chart is only resized, and laid out once that settles.
-      // A chart that is slow to resize, such as one of thousands of items, would make every frame
-      // of the drag slow: it keeps its size until then instead.
-      if (this.relayoutTimer === undefined) {
-        this.relayout();
-        this.resizesSlowly = false;
-      } else if (!this.resizesSlowly) {
-        const start = performance.now();
-        this.guard(() => this.resizeChart());
-        this.resizesSlowly = performance.now() - start > RESIZE_BUDGET;
-      }
-      clearTimeout(this.relayoutTimer);
-      this.relayoutTimer = setTimeout(() => {
-        this.relayoutTimer = undefined;
-        this.relayout();
-      }, SETTLE_DELAY);
-    });
+    this.resizeFrame = requestAnimationFrame(() => this.guard(() => this.resize()));
   }
 
-  /** Cancels the layout due once the size settles, so that the next change of size lays out at once. */
-  private cancelRelayout(): void {
-    clearTimeout(this.relayoutTimer);
-    this.relayoutTimer = undefined;
-  }
-
-  /**
-   * The size to draw the chart at: the container's, but no shorter than the chart can be read at,
-   * such as one of many facets, which the container then scrolls. Zero for a container without a
-   * size, as in the source view.
-   */
-  private drawingSize(): { width: number; height: number } {
-    const { clientWidth, clientHeight } = this.container;
-    if (clientWidth === 0 || clientHeight === 0) return { width: 0, height: 0 };
-    const least = this.option ? minimumHeight(this.option, clientWidth) : 0;
-    this.scrolls(least > clientHeight ? least : undefined);
-    // Measured again, without the scroll bar's width. A narrower chart is no shorter to read.
-    return { width: this.container.clientWidth, height: Math.max(clientHeight, least) };
-  }
-
-  /** Makes the drawing taller than the container, which scrolls it, or fits it to the container. */
-  private scrolls(height: number | undefined): void {
-    if (height === this.scrolledHeight) return;
-    this.scrolledHeight = height;
-    this.container.classList.toggle("scrolls", height !== undefined);
-    Object.assign(this.drawing.style, {
-      bottom: height === undefined ? "0" : "auto",
-      height: height === undefined ? "" : `${height}px`,
-    });
-  }
-
-  private resizeChart(): void {
-    if (this.tabHidden()) return;
-    const { width, height } = this.drawingSize();
-    if (
-      this.chart &&
-      width > 0 &&
-      height > 0 &&
-      (this.chart.getWidth() !== width || this.chart.getHeight() !== height)
-    ) {
-      // A media query can replace the data during resize even when our layout is unchanged.
-      if (Array.isArray(this.option?.media) && this.option.media.length > 0) {
-        this.chartItems = undefined;
-      }
-      this.chart.resize({ width, height });
-    }
+  /** Fits the chart to the container, unless the container has no size, as in the source view. */
+  private resize(): void {
+    const { clientWidth: width, clientHeight: height } = this.container;
+    const chart = this.chart;
+    if (!chart || this.tabHidden() || width === 0 || height === 0) return;
+    if (chart.getWidth() === width && chart.getHeight() === height) return;
+    // A media query can replace the data.
+    if (Array.isArray(this.option?.media)) this.chartItems = undefined;
+    chart.resize({ width, height });
   }
 
   /** The item a click on a series hit, if it hit one. */

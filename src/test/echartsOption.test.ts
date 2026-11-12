@@ -374,7 +374,7 @@ suite("echartsOption", () => {
     assert.strictEqual(seriesTypes(shared), "line");
   });
 
-  test("validates inherited properties that the layout copies", () => {
+  test("validates inherited properties", () => {
     assert.match(
       errorOf(
         '(() => { const parent = {series: [{type: "pie"}]}; ' +
